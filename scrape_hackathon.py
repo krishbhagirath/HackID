@@ -31,8 +31,20 @@ def scrape_entire_hackathon(hackathon_url: str, max_projects: int = 10, delay_se
     print(f"Delay between projects: {delay_seconds}s")
     print("="*80)
     
-    # Step 1: Get all project URLs from the gallery
-    print("\n[Step 1] Fetching project URLs from gallery...")
+    # Step 1: Get hackathon schedule
+    print("\n[Step 1] Fetching hackathon schedule...")
+    schedule = scraper.scrape_hackathon_schedule(hackathon_url)
+    
+    if schedule:
+        print(f"✓ Found {len(schedule)} schedule event(s)")
+        for event in schedule:
+            print(f"  • {event['period']}: {event['start_time']} → {event['end_time']}")
+        print()
+    else:
+        print("⚠️  No schedule found (continuing anyway)\n")
+    
+    # Step 2: Get all project URLs from the gallery
+    print("[Step 2] Fetching project URLs from gallery...")
     project_urls = scraper.scrape_hackathon_gallery(hackathon_url, max_projects=max_projects)
     
     if not project_urls:
@@ -41,8 +53,8 @@ def scrape_entire_hackathon(hackathon_url: str, max_projects: int = 10, delay_se
     
     print(f"✓ Found {len(project_urls)} project(s) to scrape\n")
     
-    # Step 2: Scrape each project
-    print("[Step 2] Scraping individual projects...\n")
+    # Step 3: Scrape each project
+    print("[Step 3] Scraping individual projects...\n")
     all_projects = []
     successful = 0
     failed = 0
@@ -67,6 +79,21 @@ def scrape_entire_hackathon(hackathon_url: str, max_projects: int = 10, delay_se
             print(f"  Team: {len(project_data['team_members'])} member(s)")
             print(f"  GitHub: {project_data['github_repo'] or 'Not found'}")
             
+            # Append schedule information to project
+            if schedule:
+                # Find the "Submissions" period for start/end times
+                submissions_period = next((s for s in schedule if s['period'] == 'Submissions'), None)
+                if submissions_period:
+                    project_data['start_time'] = submissions_period['start_time']
+                    project_data['end_time'] = submissions_period['end_time']
+                else:
+                    # If no Submissions period, use first schedule event
+                    project_data['start_time'] = schedule[0]['start_time'] if schedule else ''
+                    project_data['end_time'] = schedule[0]['end_time'] if schedule else ''
+            else:
+                project_data['start_time'] = ''
+                project_data['end_time'] = ''
+            
             all_projects.append(project_data)
             successful += 1
             
@@ -87,13 +114,20 @@ def scrape_entire_hackathon(hackathon_url: str, max_projects: int = 10, delay_se
         else:
             print()  # Just add newline for last project
     
-    # Step 3: Save all projects together
+    # Step 4: Save all data together
     if all_projects:
-        save_to_json(all_projects, 'output/all_hackathon_projects.json')
+        # Combine schedule and projects into final output
+        final_output = {
+            'hackathon_url': hackathon_url,
+            'schedule': schedule,
+            'projects': all_projects
+        }
+        save_to_json(final_output, 'output/all_hackathon_projects.json')
         
         print("="*80)
         print(" SUMMARY")
         print("="*80)
+        print(f"✓ Schedule events: {len(schedule)}")
         print(f"✓ Successfully scraped: {successful} project(s)")
         if failed > 0:
             print(f"❌ Failed: {failed} project(s)")
