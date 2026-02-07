@@ -5,23 +5,12 @@ export enum Verdict {
     VALID = 'VALID'
 }
 
-export enum AIGenConfidence {
-    NONE = 'None',
-    LOW = 'Low',
-    MEDIUM = 'Medium',
-    HIGH = 'High'
-}
-
 export interface ProjectResult {
     id: string;
     name: string;
     submitter: string;
     score: number;
     verdict: Verdict;
-    matchesFound: number;
-    aiGenConfidence: AIGenConfidence;
-    thumbnail: string;
-    timestamp: string;
 }
 
 export interface Stats {
