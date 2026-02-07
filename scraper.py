@@ -64,6 +64,57 @@ class DevpostScraper:
             print(f"Error scraping gallery: {e}")
             return []
     
+    def scrape_hackathon_schedule(self, hackathon_url: str) -> List[Dict[str, str]]:
+        """
+        Scrape a hackathon's schedule from the dates page.
+        
+        Args:
+            hackathon_url: URL to the hackathon page (e.g., https://deltahacks-12.devpost.com/)
+            
+        Returns:
+            List of schedule events with period, start_time, and end_time
+        """
+        try:
+            # Build the schedule URL
+            base_url = hackathon_url.rstrip('/')
+            schedule_url = f"{base_url}/details/dates"
+            
+            print(f"Fetching schedule: {schedule_url}")
+            response = self.session.get(schedule_url)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Find the schedule table
+            schedule_table = soup.find('table', class_='no-borders')
+            if not schedule_table:
+                print("Schedule table not found")
+                return []
+            
+            # Extract schedule events
+            schedule = []
+            tbody = schedule_table.find('tbody')
+            if tbody:
+                rows = tbody.find_all('tr')
+                for row in rows:
+                    cells = row.find_all('td')
+                    if len(cells) >= 3:
+                        period = cells[0].text.strip()
+                        start_time = cells[1].get('data-iso-date', cells[1].text.strip())
+                        end_time = cells[2].get('data-iso-date', cells[2].text.strip())
+                        
+                        schedule.append({
+                            'period': period,
+                            'start_time': start_time,
+                            'end_time': end_time
+                        })
+            
+            print(f"Found {len(schedule)} schedule event(s)")
+            return schedule
+        
+        except Exception as e:
+            print(f"Error scraping schedule: {e}")
+            return []
+    
     def scrape_project(self, url: str) -> Dict:
         """
         Scrape a single Devpost project page.
