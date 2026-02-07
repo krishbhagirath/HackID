@@ -32,9 +32,10 @@ class ClaimExtractor:
     
     def __init__(self, api_key: str):
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",  # Stable API version
-            temperature=0,  # Deterministic
-            google_api_key=api_key
+            model="gemini-2.5-flash",
+            temperature=0,
+            google_api_key=api_key,
+            transport="rest"
         )
         
         self.parser = PydanticOutputParser(pydantic_object=ProjectClaims)
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     test_file = output_dir / 'lavalock.json'
     
     if test_file.exists():
-        with open(test_file, 'r') as f:
+        with open(test_file, 'r', encoding='utf-8') as f:
             devpost_data = json.load(f)
         
         # Extract claims

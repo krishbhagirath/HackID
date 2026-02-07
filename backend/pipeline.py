@@ -61,7 +61,7 @@ class ValidationPipeline:
         try:
             report = self.github_validator.validate_project(
                 github_url=github_url,
-                claims=claims.dict(),
+                claims=claims.model_dump(),
                 hackathon_start=devpost_data['start_time'],
                 hackathon_end=devpost_data['end_time']
             )
@@ -74,15 +74,15 @@ class ValidationPipeline:
             }
         
         # Generate human-readable description
-        description = self._generate_description(report, claims.dict())
+        description = self._generate_description(report, claims.model_dump())
         
         # Combine results
         return {
             "project_title": devpost_data['title'],
             "project_url": devpost_data['url'],
             "github_url": github_url,
-            "claims": claims.dict(),
-            "validation": report.dict(),
+            "claims": claims.model_dump(),
+            "validation": report.model_dump(),
             "final_status": report.status,
             "confidence": report.confidence,
             "flags": report.flags,
@@ -183,19 +183,10 @@ class ValidationPipeline:
 if __name__ == "__main__":
     from dotenv import load_dotenv
     from pathlib import Path
+    import sys
+    import glob
     
-    load_dotenv()
-    
-    # Load scraped project
-    test_file = Path('../output/lavalock.json')
-    
-    if not test_file.exists():
-        print(f"❌ Test file not found: {test_file}")
-        print("Run the Devpost scraper first!")
-        exit(1)
-    
-    with open(test_file, 'r') as f:
-        devpost_data = json.load(f)
+    load_dotenv(dotenv_path="../.env")
     
     # Check for API keys
     google_key = os.getenv('GOOGLE_API_KEY')
@@ -205,8 +196,9 @@ if __name__ == "__main__":
         print("❌ GOOGLE_API_KEY not set in .env")
         exit(1)
     
-    if not github_token:
-        print("⚠️  GITHUB_TOKEN not set (will use 60 req/hr limit)")
+    if github_token == "your-github-token-here-optional" or not github_token:
+        print("⚠️  Using GitHub public rate limit (60 req/hr). Add real GITHUB_TOKEN for 5,000 req/hr.")
+        github_token = None
     
     # Create pipeline
     pipeline = ValidationPipeline(
@@ -214,25 +206,60 @@ if __name__ == "__main__":
         github_token=github_token
     )
     
-    # Run validation
-    result = pipeline.validate_project(devpost_data)
+    # Argument handling
+    output_dir = Path('../output')
     
-    # Save result
-    output_file = Path('validation_result.json')
-    with open(output_file, 'w') as f:
-        json.dump(result, indent=2, fp=f)
-    
-    # Print results
-    print(f"\n{'='*70}")
-    print("📋 VALIDATION REPORT")
-    print(f"{'='*70}\n")
-    
-    print(result['description'])
-    
-    if result.get('flags'):
-        print(f"\n🚩 **Flags:**")
-        for i, flag in enumerate(result['flags'], 1):
-            print(f"   {i}. {flag}")
-    
-    print(f"\n💾 Full report saved to: {output_file}")
-    print(f"{'='*70}")
+    if len(sys.argv) > 1:
+        target = sys.argv[1]
+        
+        if target.lower() == "all":
+            # Batch validate all project JSONs
+            projects = []
+            file_paths = glob.glob(str(output_dir / "*.json"))
+            # Filter out the combined summary files
+            file_paths = [f for f in file_paths if "all_" not in f]
+            
+            for f_path in file_paths:
+                with open(f_path, 'r', encoding='utf-8') as f:
+                    projects.append(json.load(f))
+            
+            print(f"🚀 Batch validating {len(projects)} projects...")
+            results = pipeline.validate_batch(projects)
+            
+            # Save results
+            with open('batch_validation_results.json', 'w') as f:
+                json.dump(results, indent=2, fp=f)
+            print(f"\n💾 Batch results saved to: batch_validation_results.json")
+            
+        else:
+            # Single project validation
+            project_file = output_dir / target
+            if not project_file.suffix:
+                project_file = project_file.with_suffix('.json')
+                
+            if not project_file.exists():
+                print(f"❌ Project file not found: {project_file}")
+                exit(1)
+                
+            with open(project_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+            result = pipeline.validate_project(data)
+            print(f"\n{'='*70}")
+            print("📋 VALIDATION REPORT")
+            print(f"{'='*70}\n")
+            print(result['description'])
+            if result.get('flags'):
+                print(f"\n🚩 Flags: {len(result['flags'])}")
+    else:
+        print("Usage:")
+        print("  python pipeline.py <project_name> (e.g. bloomguard)")
+        print("  python pipeline.py all")
+        
+        # Default fallback to LavaLock for convenience
+        test_file = output_dir / 'lavalock.json'
+        if test_file.exists():
+            print(f"\nRunning default test on {test_file.name}...\n")
+            with open(test_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            pipeline.validate_project(data)
