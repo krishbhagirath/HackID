@@ -6,6 +6,7 @@ This script automatically finds all project URLs and scrapes each one.
 from scraper import DevpostScraper, save_to_json
 import os
 import time
+import argparse
 
 
 def scrape_entire_hackathon(hackathon_url: str, max_projects: int = 10, delay_seconds: float = 2.5):
@@ -136,12 +137,46 @@ def scrape_entire_hackathon(hackathon_url: str, max_projects: int = 10, delay_se
 
 
 if __name__ == '__main__':
-    # Example: Scrape DeltaHacks 12
-    hackathon_url = 'https://deltahacks-12.devpost.com/'
+    parser = argparse.ArgumentParser(
+        description='Scrape all projects from a hackathon\'s Devpost gallery.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  # Scrape DeltaHacks 12 (first 10 projects, 2.5s delay)
+  python scrape_hackathon.py https://deltahacks-12.devpost.com/
+  
+  # Scrape up to 50 projects with 3 second delays
+  python scrape_hackathon.py https://some-hackathon.devpost.com/ --max-projects 50 --delay 3
+  
+  # Scrape all projects (no limit) with 1 second delays
+  python scrape_hackathon.py https://another-hackathon.devpost.com/ --max-projects 0 --delay 1
+        '''
+    )
     
-    # Scrape first 10 projects with 2.5 second delays
+    parser.add_argument(
+        'url',
+        help='URL to the hackathon page (e.g., https://deltahacks-12.devpost.com/)'
+    )
+    parser.add_argument(
+        '--max-projects',
+        type=int,
+        default=10,
+        help='Maximum number of projects to scrape (default: 10, use 0 for unlimited)'
+    )
+    parser.add_argument(
+        '--delay',
+        type=float,
+        default=2.5,
+        help='Delay in seconds between scraping projects (default: 2.5)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Convert 0 to None for unlimited projects
+    max_projects = args.max_projects if args.max_projects > 0 else None
+    
     scrape_entire_hackathon(
-        hackathon_url=hackathon_url,
-        max_projects=10,
-        delay_seconds=2.5
+        hackathon_url=args.url,
+        max_projects=max_projects,
+        delay_seconds=args.delay
     )
