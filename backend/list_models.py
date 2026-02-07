@@ -1,20 +1,45 @@
+"""
+List all available Gemini models for your API key.
+"""
 import os
-import google.generativeai as genai
 from dotenv import load_dotenv
+import requests
 
-load_dotenv(dotenv_path="../.env")
-api_key = os.getenv("GOOGLE_API_KEY")
+load_dotenv()
 
+api_key = os.getenv('GOOGLE_API_KEY')
 if not api_key:
-    print("GOOGLE_API_KEY not found in .env")
+    print("❌ No GOOGLE_API_KEY found in .env")
     exit(1)
 
-genai.configure(api_key=api_key)
+print(f"✓ API Key found: {api_key[:10]}...\n")
 
-print("Listing accessible models...")
+# List models using the REST API directly
+url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+
 try:
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            print(f"- {m.name}")
+    response = requests.get(url)
+    
+    if response.status_code == 200:
+        data = response.json()
+        models = data.get('models', [])
+        
+        print(f"✅ Found {len(models)} available models:\n")
+        
+        for model in models:
+            name = model.get('name', 'Unknown')
+            display_name = model.get('displayName', 'Unknown')
+            supported_methods = model.get('supportedGenerationMethods', [])
+            
+            # Only show models that support generateContent
+            if 'generateContent' in supported_methods:
+                print(f"  ✓ {name}")
+                print(f"    Display: {display_name}")
+                print(f"    Methods: {', '.join(supported_methods)}\n")
+    else:
+        print(f"❌ Failed to list models")
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.text}")
+        
 except Exception as e:
-    print(f"Error listing models: {e}")
+    print(f"❌ Error: {e}")

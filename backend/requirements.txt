@@ -1,8 +1,8 @@
 beautifulsoup4==4.12.3
 requests==2.31.0
-langchain==0.3.17
-langchain-google-genai==2.0.8
-langchain-community==0.3.16
+langchain==1.2.9
+langchain-google-genai==4.2.0
+langchain-community
 pydantic==2.10.5
 python-dotenv==1.0.1
 PyGithub==2.5.0

@@ -31,9 +31,10 @@ class ValidationReport(BaseModel):
 class GitHubValidator:
     """Agent 2: Validates claims against GitHub repository using API only."""
     
-    def __init__(self, github_token: Optional[str] = None):
+    def __init__(self, github_token: Optional[str] = None, llm=None):
         self.github = Github(github_token) if github_token else Github()
         self.api_calls = 0  # Track API usage
+        self.llm = llm # Gemini LLM for Tier 2 analysis
         
         # Tech detection patterns (file names to look for)
         self.tech_files = {
@@ -116,7 +117,25 @@ class GitHubValidator:
         print("⏰ Checking commit timeline (CRITICAL)...")
         time_data = self._validate_timeline(repo, hackathon_start, hackathon_end)
         
-        # IMMEDIATE DISQUALIFICATION if no commits in timeframe
+        # HARD DISQUALIFICATION: Any commit before start time
+        if time_data['pre_start_commits'] > 0:
+            return ValidationReport(
+                status="DISQUALIFIED",
+                tech_found=[],
+                tech_missing=claims.get('tech_stack', []),
+                team_matched=[],
+                team_unmatched=claims.get('team_members', []),
+                unauthorized_contributors=[],
+                commits_in_timeframe=time_data['in_timeframe'],
+                commits_outside_timeframe=time_data['outside_timeframe'],
+                first_commit=time_data['first_commit'],
+                last_commit=time_data['last_commit'],
+                flags=[f"❌ DISQUALIFIED: Found {time_data['pre_start_commits']} commit(s) BEFORE hackathon started"],
+                confidence=0.0,
+                api_calls_used=self.api_calls
+            )
+        
+        # DISQUALIFICATION if NO commits in timeframe (previously our only check)
         if time_data['in_timeframe'] == 0:
             return ValidationReport(
                 status="DISQUALIFIED",
@@ -129,7 +148,7 @@ class GitHubValidator:
                 commits_outside_timeframe=time_data['outside_timeframe'],
                 first_commit=time_data['first_commit'],
                 last_commit=time_data['last_commit'],
-                flags=["❌ DISQUALIFIED: No commits during hackathon timeframe"],
+                flags=["❌ DISQUALIFIED: No activity found during hackathon timeframe"],
                 confidence=0.0,
                 api_calls_used=self.api_calls
             )
@@ -168,7 +187,8 @@ class GitHubValidator:
             len(team_matched),
             len(team_unmatched),
             time_data['in_timeframe'],
-            time_data['outside_timeframe']
+            time_data['outside_timeframe'],
+            time_data['leeway_commits']
         )
         
         print(f"✅ Validation complete. API calls used: {self.api_calls}")
@@ -207,32 +227,45 @@ class GitHubValidator:
     ) -> dict:
         """Check if commits were made during hackathon. (1-2 API calls)"""
         
+        from datetime import timedelta
+        
         start_dt = datetime.fromisoformat(hackathon_start.replace('Z', '+00:00'))
         end_dt = datetime.fromisoformat(hackathon_end.replace('Z', '+00:00'))
+        leeway_dt = end_dt + timedelta(hours=5)
         
         try:
-            # Get commits in timeframe (1 API call)
-            commits_in = list(repo.get_commits(since=start_dt, until=end_dt))
-            self.api_calls += 1
-            
-            # Get all commits to check outside timeframe (1 API call)
+            # Get all commits to check timeline (1 API call)
             all_commits = list(repo.get_commits())
             self.api_calls += 1
             
-            in_timeframe = len(commits_in)
-            outside_timeframe = len(all_commits) - in_timeframe
+            pre_start = 0
+            in_timeframe = 0
+            leeway_commits = 0
+            after_leeway = 0
             
-            if all_commits:
-                commit_dates = [c.commit.author.date for c in all_commits]
-                first_commit = min(commit_dates).isoformat()
-                last_commit = max(commit_dates).isoformat()
-            else:
-                first_commit = None
-                last_commit = None
+            commit_dates = []
+            for c in all_commits:
+                dt = c.commit.author.date.replace(tzinfo=start_dt.tzinfo)
+                commit_dates.append(dt)
+                
+                if dt < start_dt:
+                    pre_start += 1
+                elif start_dt <= dt <= end_dt:
+                    in_timeframe += 1
+                elif end_dt < dt <= leeway_dt:
+                    leeway_commits += 1
+                else:
+                    after_leeway += 1
+            
+            first_commit = min(commit_dates).isoformat() if commit_dates else None
+            last_commit = max(commit_dates).isoformat() if commit_dates else None
             
             return {
                 "in_timeframe": in_timeframe,
-                "outside_timeframe": outside_timeframe,
+                "pre_start_commits": pre_start,
+                "leeway_commits": leeway_commits,
+                "after_leeway_commits": after_leeway,
+                "outside_timeframe": pre_start + leeway_commits, # We only care about suspect ones
                 "first_commit": first_commit,
                 "last_commit": last_commit
             }
@@ -240,6 +273,9 @@ class GitHubValidator:
             print(f"⚠️  Timeline check error: {e}")
             return {
                 "in_timeframe": 0,
+                "pre_start_commits": 0,
+                "leeway_commits": 0,
+                "after_leeway_commits": 0,
                 "outside_timeframe": 0,
                 "first_commit": None,
                 "last_commit": None
@@ -277,7 +313,7 @@ class GitHubValidator:
                 found.append(tech)
         
         # For remaining tech, check config files (max 3-4 API calls)
-        files_to_check = ["package.json", "requirements.txt", "go.mod"]
+        files_to_check = ["package.json", "requirements.txt", "go.mod", "pyproject.toml"]
         file_contents = {}
         
         for filename in files_to_check:
@@ -301,9 +337,96 @@ class GitHubValidator:
                     found.append(tech)
                     break
         
+        # TIER 2: Semantic Deep Dive for remaining missing tech
         missing = [t for t in claimed_tech if t not in found]
+        if missing and self.llm:
+            print(f"🕵️  Performing Tier 2 Deep Dive for: {missing}")
+            # Batch all missing techs into one semantic check
+            batch_found = self._semantic_deep_dive_batch(repo, missing)
+            for tech in batch_found:
+                if tech in missing:
+                    found.append(tech)
+                    missing.remove(tech)
         
         return found, missing
+
+    def _semantic_deep_dive_batch(self, repo, techs: List[str]) -> List[str]:
+        """Search for code snippets and use Gemini to verify multiple tech usage in one go. (3-5 API calls total)"""
+        import time
+        max_retries = 2
+        
+        # 1. Collect snippets for ALL missing techs (expensive in GitHub API calls, but saving LLM quota)
+        all_snippets = []
+        seen_paths = set()
+        
+        for tech in techs[:5]: # Limit to top 5 most important missing techs to save API
+            try:
+                keywords = self.tech_keywords.get(tech, [tech.lower()])
+                query = f"repo:{repo.full_name} " + " OR ".join(keywords)
+                search_results = self.github.search_code(query)
+                self.api_calls += 1
+                
+                for i, result in enumerate(search_results):
+                    if i >= 1 or result.path in seen_paths: continue
+                    try:
+                        content = base64.b64decode(result.content).decode('utf-8')
+                        all_snippets.append(f"File: {result.path}\n```\n{content[:1000]}\n```")
+                        seen_paths.add(result.path)
+                        self.api_calls += 1
+                    except:
+                        continue
+            except:
+                continue
+
+        if not all_snippets:
+            return []
+            
+        # 2. Ask Gemini to verify ALL techs at once (1 LLM call)
+        context = "\n\n".join(all_snippets)
+        tech_list = ", ".join(techs)
+        
+        prompt = f"""You are a code auditor. A hackathon team claims to use these technologies: {tech_list}.
+Review these code snippets from their repository and determine which ones are actually being used.
+
+CODING CLUES:
+{context}
+
+Respond with a JSON list of technologies that are CLEARLY used. 
+Format: {{"found": ["Tech1", "Tech2"]}}
+"""
+
+        for attempt in range(max_retries):
+            try:
+                response = self.llm.invoke(prompt)
+                print(f"   🤖 Gemini Batch Audit: {response.content.strip()}")
+                
+                # Simple parsing (could use Pydantic but keeping it direct for Agent 2)
+                import json
+                try:
+                    # Clean the JSON if Gemini wraps it in backticks
+                    json_str = response.content.strip()
+                    if "```json" in json_str:
+                        json_str = json_str.split("```json")[1].split("```")[0].strip()
+                    elif "```" in json_str:
+                        json_str = json_str.split("```")[1].split("```")[0].strip()
+                        
+                    data = json.loads(json_str)
+                    return data.get("found", [])
+                except:
+                    # Fallback to simple string check if JSON parsing fails
+                    confirmed = [t for t in techs if t.upper() in response.content.upper()]
+                    return confirmed
+                    
+            except Exception as e:
+                if "429" in str(e) or "quota" in str(e).lower():
+                    wait_time = 30 * (attempt + 1)
+                    print(f"   ⏳ Rate limited during batch Tier 2. Waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                print(f"   ⚠️  Batch deep dive failed: {e}")
+                return []
+        
+        return []
     
     def _validate_team(
         self,
@@ -391,10 +514,13 @@ class GitHubValidator:
             flags.append(f"Unauthorized contributor found: {contributor}")
         
         # Time flags
-        if time_data['outside_timeframe'] > time_data['in_timeframe']:
+        if time_data['pre_start_commits'] > 0:
+            flags.append(f"❌ Hard Disqualification: {time_data['pre_start_commits']} commits BEFORE start")
+            
+        if time_data['leeway_commits'] > 0:
             flags.append(
-                f"More commits outside ({time_data['outside_timeframe']}) "
-                f"than inside ({time_data['in_timeframe']}) hackathon timeframe"
+                f"⚠️  Leeway Review: {time_data['leeway_commits']} commits "
+                f"in the 5-hour post-deadline window"
             )
         
         return flags
@@ -406,7 +532,8 @@ class GitHubValidator:
         team_matched: int,
         team_unmatched: int,
         commits_in: int,
-        commits_out: int
+        commits_out: int,
+        leeway_commits: int = 0
     ) -> float:
         """Calculate confidence score (0-1)."""
         
@@ -423,8 +550,10 @@ class GitHubValidator:
             scores.append(team_score * 0.3)
         
         # Time score (30%)
-        if commits_in + commits_out > 0:
-            time_score = commits_in / (commits_in + commits_out)
+        # Penalize leeway commits slightly (e.g., each leeway commit counts as 0.5 a normal commit for ratio)
+        total_relevant = commits_in + leeway_commits
+        if total_relevant > 0:
+            time_score = commits_in / total_relevant
             scores.append(time_score * 0.3)
         
         return sum(scores) if scores else 0.0

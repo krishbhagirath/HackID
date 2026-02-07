@@ -4,8 +4,8 @@ Converts Devpost JSON into clean, testable claims using Gemini API.
 """
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from typing import List
 import json
@@ -34,8 +34,7 @@ class ClaimExtractor:
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             temperature=0,
-            google_api_key=api_key,
-            transport="rest"
+            api_key=api_key
         )
         
         self.parser = PydanticOutputParser(pydantic_object=ProjectClaims)
@@ -87,6 +86,7 @@ Team Members: {team_members}""")
         Returns:
             ProjectClaims object with normalized claims
         """
+        import time
         
         # Format the story sections
         story_text = "\n\n".join([
@@ -97,18 +97,29 @@ Team Members: {team_members}""")
         # Format team members
         team_members = [member['name'] for member in devpost_data.get('team_members', [])]
         
-        # Run the LLM
+        # Run the LLM with retry
         chain = self.prompt | self.llm | self.parser
         
-        result = chain.invoke({
-            "title": devpost_data.get('title', ''),
-            "built_with": ", ".join(devpost_data.get('built_with', [])),
-            "story": story_text,
-            "team_members": ", ".join(team_members),
-            "format_instructions": self.parser.get_format_instructions()
-        })
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                result = chain.invoke({
+                    "title": devpost_data.get('title', ''),
+                    "built_with": ", ".join(devpost_data.get('built_with', [])),
+                    "story": story_text,
+                    "team_members": ", ".join(team_members),
+                    "format_instructions": self.parser.get_format_instructions()
+                })
+                return result
+            except Exception as e:
+                if "429" in str(e) or "quota" in str(e).lower():
+                    wait_time = 20 * (attempt + 1)
+                    print(f"⏳ Rate limited during claim extraction. Waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                raise e
         
-        return result
+        raise Exception("Failed to extract claims after multiple retries due to rate limits.")
 
 
 # Test if run directly

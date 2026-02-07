@@ -15,7 +15,10 @@ class ValidationPipeline:
     
     def __init__(self, google_api_key: str, github_token: str = None):
         self.claim_extractor = ClaimExtractor(api_key=google_api_key)
-        self.github_validator = GitHubValidator(github_token=github_token)
+        self.github_validator = GitHubValidator(
+            github_token=github_token,
+            llm=self.claim_extractor.llm
+        )
     
     def validate_project(self, devpost_data: dict) -> dict:
         """
@@ -157,6 +160,11 @@ class ValidationPipeline:
         total_api_calls = 0
         
         for i, project in enumerate(devpost_projects, 1):
+            if i > 1:
+                print(f"⏳ Waiting 30s to respect API rate limits...")
+                import time
+                time.sleep(30)
+                
             print(f"\n{'='*70}")
             print(f"📊 Project {i}/{len(devpost_projects)}")
             print(f"{'='*70}")
@@ -245,12 +253,19 @@ if __name__ == "__main__":
                 data = json.load(f)
                 
             result = pipeline.validate_project(data)
+            
+            # Save result
+            output_file = Path('validation_result.json')
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(result, indent=2, fp=f)
+            
             print(f"\n{'='*70}")
             print("📋 VALIDATION REPORT")
             print(f"{'='*70}\n")
             print(result['description'])
             if result.get('flags'):
                 print(f"\n🚩 Flags: {len(result['flags'])}")
+            print(f"\n💾 Full report saved to: {output_file}")
     else:
         print("Usage:")
         print("  python pipeline.py <project_name> (e.g. bloomguard)")
