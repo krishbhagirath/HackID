@@ -38,89 +38,78 @@ graph TD
 | **Eligibility Checker** | Verifies commits are within hackathon dates |
 | **Flagging Decision** | Determines if manual review is needed |
 
-## 🚀 Current Status: Phase 1 - Prototype
+## 🚀 Getting Started
 
-The prototype demonstrates Devpost scraping capabilities on real hackathon projects.
+The project is currently in **Phase 2**, featuring a fully functional multi-agent verification pipeline powered by **Google Gemini**.
 
-### What Works Now
+### 📦 Installation
 
-✅ **Devpost Scraper** - Extracts comprehensive project data:
-- Project title and tagline
-- Full story sections (Inspiration, What it does, How we built it, Challenges, etc.)
-- Tech stack ("Built With" tags)
-- GitHub repository links
-- Team member information
-- External links and prizes
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd hackID
+   ```
 
-### Example Output
+2. **Quick Setup (Windows)**
+   Run the included setup script to prepare your environment:
+   ```powershell
+   ./setup.ps1
+   ```
 
-```json
-{
-  "title": "deltawash",
-  "story": {
-    "Inspiration": "One time my dentist handled the tools...",
-    "What it does": "Our product checks that the complete WHO protocol...",
-    "How we built it": "On the hardware side, a Pi cam is used..."
-  },
-  "built_with": ["python", "pytorch", "tensorflow", "react", "raspberry-pi"],
-  "github_repo": "https://github.com/Goldenstar2660/DeltaWash"
-}
-```
+3. **Configure API Keys**
+   Edit the `.env` file and add your keys:
+   ```env
+   GOOGLE_API_KEY=your_gemini_key
+   GITHUB_TOKEN=your_token_optional
+   ```
 
-## 📦 Installation
+### 🧪 Running Validation
 
+To validate a hackathon project gallery:
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd hackID
-
-# Install dependencies
-pip install requests beautifulsoup4 lxml
-
-# For full multi-agent system (Phase 2+):
-pip install langchain langchain-openai python-dotenv
+$env:PYTHONPATH="backend"
+python backend/pipeline.py gallery <devpost_gallery_url> --max 5
 ```
 
-## 🧪 Testing the Scraper
+---
 
-```bash
-python test_scraper.py
-```
+## 🏗️ System Architecture
 
-This will scrape the DeltaHacks 12 project "deltawash" and save the output to `output/deltawash.json`.
+HackID uses a two-agent structure coordinated by a central pipeline:
 
-### Testing with More Projects
+1. **Claim Extractor (Agent 1)**: Analyzes Devpost stories using AI to extract structured claims with **importance weights** (Core, Secondary, Minor).
+2. **GitHub Validator (Agent 2)**: 
+   - **Tier 1**: Fast API-based checks for files and commit history.
+   - **Tier 2**: AI-powered code deep-dives to verify complex logic without cloning.
 
-Edit `test_scraper.py` and add more Devpost URLs:
+### ⚖️ Decision Logic
+- **Verified**: All core technical requirements met.
+- **Flagged**: Missing **Core** technologies (weight 1.0).
+- **Disqualified**: Hard timeline violations (commits made before start).
 
-```python
-test_projects = [
-    'https://devpost.com/software/deltawash',
-    'https://devpost.com/software/your-project-url',
-    # Add more...
-]
-```
+---
 
 ## 🗺️ Roadmap
 
 ### ✅ Phase 1: Prototype (COMPLETE)
-- [x] Devpost scraper
-- [x] Data extraction
-- [x] JSON output
+- [x] Devpost scraper & JSON output
 
-### 🔄 Phase 2: Multi-Agent System (NEXT)
-- [ ] LangChain integration
-- [ ] Claim extraction agent (LLM-powered)
-- [ ] GitHub API integration
-- [ ] Code analysis agent
-- [ ] Comparison logic
-- [ ] Eligibility checker
+### ✅ Phase 2: Agentic Verification (COMPLETE)
+- [x] Gemini-powered claim extraction
+- [x] Weighted technology importance
+- [x] AI deep-dive GitHub validation (no cloning)
+- [x] Normalized PostgreSQL/VertexAI detection
+- [x] Optimized performant pipeline CLI
+
+### 📋 Phase 3: Integration (NEXT)
+- [ ] Supabase data ingestion
+- [ ] Batch processing from CSV
+- [ ] Advanced report generation
 
 ### 📋 Phase 3: CSV Processing
 - [ ] Batch processing from CSV
 - [ ] Progress tracking
 - [ ] Error handling
-- [ ] Report generation
 
 ### 🌐 Phase 4: Web Interface
 - [ ] Flask/FastAPI backend

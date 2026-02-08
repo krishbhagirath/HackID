@@ -25,3 +25,5 @@ Thumbs.db
 # Project specific
 output/
 *.log
+temp_repos/
+validation_result.json
