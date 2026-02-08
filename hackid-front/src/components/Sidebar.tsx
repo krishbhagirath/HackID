@@ -36,7 +36,7 @@ export default function Sidebar({
               type="text" 
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder={view === 'HACKATHONS' ? "enter devpost url" : "enter project url"}
+              placeholder={view === 'HACKATHONS' ? "enter devpost url" : "enter devpost url"}
             />
           </div>
           <button 
@@ -44,7 +44,7 @@ export default function Sidebar({
             disabled={isScanning || !url}
             className="w-full mt-4 bg-primary text-black font-bold py-3 px-6 brutal-border brutal-shadow hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all uppercase disabled:opacity-50"
           >
-            {isScanning ? 'Processing...' : (view === 'HACKATHONS' ? 'Scan Hackathon' : 'Re-Scan Project')}
+            {isScanning ? 'Processing...' : (view === 'HACKATHONS' ? 'Scan Hackathon' : 'Scan Devpost')}
           </button>
         </div>
 

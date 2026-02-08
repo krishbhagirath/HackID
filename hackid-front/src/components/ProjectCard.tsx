@@ -32,14 +32,14 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         </div>
 
         {/* change "#" to however many fields we have grid-cols-#  */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {/* field 1 */}
-          <div className="p-4 border-2 border-zinc-900 dark:border-zinc-800 brutal-border bg-zinc-800 dark:bg-zinc-800/50">
+          {/* <div className="p-4 border-2 border-zinc-900 dark:border-zinc-800 brutal-border bg-zinc-800 dark:bg-zinc-800/50">
             <span className="block text-xs font-bold uppercase mb-2 opacity-60">Similarity Score</span>
             <span className={`text-3xl font-display font-black ${project.score > 70 ? 'text-brutal-red' : project.score > 40 ? 'text-primary' : 'text-brutal-green'}`}>
               {project.score}%
             </span>
-          </div>
+          </div> */}
           {/* field 2 */}
           <div className="p-4 border-2 border-zinc-900 dark:border-zinc-800 brutal-border bg-zinc-800 dark:bg-zinc-800/50">
             <span className="block text-xs font-bold uppercase mb-2 opacity-60">System Verdict</span>
