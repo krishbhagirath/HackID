@@ -10,5 +10,4 @@ jobs:
     steps:
       - name: Ping Render
         run: |
-          # Replace the URL below with your actual Render URL
-          curl -I https://hackid-backend.onrender.com/
+          curl -I https://gitcheck-backend.onrender.com
