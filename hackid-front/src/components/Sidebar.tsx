@@ -113,10 +113,10 @@ export default function Sidebar({
                 <div className="text-3xl font-display font-black">{stats.totalScanned}</div>
                 <div className="text-[10px] uppercase font-bold">In View</div>
               </div>
-              <div>
+              {/* <div>
                 <div className="text-3xl font-display font-black text-brutal-red">{stats.flagged}</div>
                 <div className="text-[10px] uppercase font-bold">Flagged</div>
-              </div>
+              </div> */}
             </div>
           </div>
         )}

@@ -13,6 +13,7 @@ export interface ProjectResult {
     score: number;
     verdict: Verdict;
     github_link?: string;
+    description?: string;
 }
 
 export interface Hackathon {

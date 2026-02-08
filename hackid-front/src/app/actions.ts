@@ -48,7 +48,8 @@ export async function getProjectsByHackathon(hackathonId: string): Promise<Proje
             submitter: (p.data as any)?.findings?.team?.matched?.[0] || 'Unknown Submitter',
             score: (p.data as any)?.score || 0,
             verdict: (p.data as any)?.status || "UNKNOWN",
-            github_link: p.github_repo_link || undefined
+            github_link: p.github_repo_link || undefined,
+            description: (p.data as any)?.description || undefined
         }));
     } catch (error) {
         console.error("Failed to fetch projects:", error);

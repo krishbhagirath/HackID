@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { type ProjectResult, Verdict } from '../types';
 
 interface ProjectCardProps {
@@ -6,6 +6,8 @@ interface ProjectCardProps {
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
+  const [showAnalysis, setShowAnalysis] = useState(false);
+
   const getVerdictColor = (v: Verdict) => {
     switch(v) {
       case Verdict.INVALID: return 'text-brutal-red';
@@ -31,16 +33,8 @@ export default function ProjectCard({ project }: ProjectCardProps) {
           <p className="text-sm font-bold opacity-50 uppercase tracking-tighter">SUBMITTED BY: {project.submitter}</p>
         </div>
 
-        {/* change "#" to however many fields we have grid-cols-#  */}
+        {/* Column layout for single field */}
         <div className="grid grid-cols-1 gap-4">
-          {/* field 1 */}
-          {/* <div className="p-4 border-2 border-zinc-900 dark:border-zinc-800 brutal-border bg-zinc-800 dark:bg-zinc-800/50">
-            <span className="block text-xs font-bold uppercase mb-2 opacity-60">Similarity Score</span>
-            <span className={`text-3xl font-display font-black ${project.score > 70 ? 'text-brutal-red' : project.score > 40 ? 'text-primary' : 'text-brutal-green'}`}>
-              {project.score}%
-            </span>
-          </div> */}
-          {/* field 2 */}
           <div className="p-4 border-2 border-zinc-900 dark:border-zinc-800 brutal-border bg-zinc-800 dark:bg-zinc-800/50">
             <span className="block text-xs font-bold uppercase mb-2 opacity-60">System Verdict</span>
             <span className={`text-3xl font-display font-black uppercase ${getVerdictColor(project.verdict)}`}>
@@ -50,8 +44,15 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         </div>
 
         <div className="flex flex-wrap gap-4 pt-2">
-          <button className="bg-black text-white dark:bg-white dark:text-black font-bold py-3 px-8 uppercase text-sm hover:bg-primary hover:text-black transition-all brutal-shadow active:translate-x-1 active:translate-y-1 active:shadow-none">
-            Detailed Analysis
+          <button 
+            onClick={() => setShowAnalysis(!showAnalysis)}
+            className={`font-bold py-3 px-8 uppercase text-sm transition-all brutal-shadow active:translate-x-1 active:translate-y-1 active:shadow-none ${
+              showAnalysis 
+                ? 'bg-primary text-black' 
+                : 'bg-black text-white dark:bg-white dark:text-black hover:bg-primary hover:text-black'
+            }`}
+          >
+            {showAnalysis ? 'Close Analysis' : 'Detailed Analysis'}
           </button>
           {project.github_link && (
             <a 
@@ -64,10 +65,22 @@ export default function ProjectCard({ project }: ProjectCardProps) {
               GitHub Source
             </a>
           )}
-          {/* <button className="brutal-border font-bold py-3 px-8 uppercase text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
-            View Source
-          </button> */}
         </div>
+
+        {showAnalysis && (
+          <div className="mt-4 p-6 border-4 border-primary bg-zinc-800/80 animate-in fade-in slide-in-from-top-4 duration-300">
+            <h4 className="font-display text-xl uppercase mb-4 border-b-2 border-primary pb-2 flex items-center gap-2">
+              <span className="material-icons text-primary">analytics</span>
+              Analysis Findings
+            </h4>
+            <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap opacity-90">
+              {project.description || "NO DETAILED DESCRIPTION AVAILABLE FOR THIS PROJECT ENTRY."}
+            </div>
+            <div className="mt-4 pt-4 border-t border-zinc-700 font-bold text-[10px] uppercase opacity-40 italic">
+              -- END OF REPORT --
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
