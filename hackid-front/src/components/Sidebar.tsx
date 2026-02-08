@@ -13,6 +13,8 @@ interface SidebarProps {
   setMinScore: (s: number) => void;
   stats: Stats;
   view?: 'HACKATHONS' | 'PROJECTS';
+  limit: number;
+  setLimit: (limit: number) => void;
 }
 
 export default function Sidebar({ 
@@ -20,7 +22,9 @@ export default function Sidebar({
   activeVerdict, setActiveVerdict,
   minScore, setMinScore,
   stats,
-  view = 'PROJECTS'
+  view = 'PROJECTS',
+  limit,
+  setLimit
 }: SidebarProps) {
   return (
     <aside className="w-full lg:w-80 flex-shrink-0">
@@ -39,6 +43,21 @@ export default function Sidebar({
               placeholder={view === 'HACKATHONS' ? "enter devpost url" : "enter devpost url"}
             />
           </div>
+
+          <div className="mt-4">
+            <label className="block text-xs font-bold uppercase mb-2">
+              Project Scan Limit
+            </label>
+            <input 
+              className="w-full p-3 brutal-border bg-zinc-900 dark:bg-zinc-800 font-mono text-sm focus:ring-0 focus:outline-none focus:border-primary text-white dark:text-white" 
+              type="number" 
+              value={limit}
+              onChange={(e) => setLimit(parseInt(e.target.value) || 0)}
+              placeholder="10"
+              min="1"
+            />
+          </div>
+
           <button 
             onClick={onScan}
             disabled={isScanning || !url}

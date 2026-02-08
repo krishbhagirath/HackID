@@ -16,7 +16,7 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HackCheck // Submission Validator",
+  title: ".gitcheck // Submission Validator",
   description: "Plagiarism Detection Engine for Hackathons",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };

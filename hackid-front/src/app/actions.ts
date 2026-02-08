@@ -45,13 +45,40 @@ export async function getProjectsByHackathon(hackathonId: string): Promise<Proje
             id: p.project_id,
             hackathon_id: p.hackathon_id,
             name: p.title || 'Untitled Project',
-            submitter: (p.data as any)?.submitter || 'Unknown Submitter',
+            submitter: (p.data as any)?.findings?.team?.matched?.[0] || 'Unknown Submitter',
             score: (p.data as any)?.score || 0,
-            verdict: ((p.data as any)?.verdict as Verdict) || Verdict.VALID,
+            verdict: (p.data as any)?.status || "UNKNOWN",
             github_link: p.github_repo_link || undefined
         }));
     } catch (error) {
         console.error("Failed to fetch projects:", error);
         return [];
+    }
+}
+
+export async function scanUrl(url: string, limit: number): Promise<{ success: boolean; message: string }> {
+    try {
+        // This is a server action that performs a POST request to your external API
+        // You can modify the request body here as requested
+        const response = await fetch('YOUR_API_ENDPOINT_HERE', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                url: url,
+                limit: limit,
+                // Add any other fields you need here
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}`);
+        }
+
+        return { success: true, message: "Scan started successfully" };
+    } catch (error) {
+        console.error("Scanning failed:", error);
+        return { success: false, message: error instanceof Error ? error.message : "Unknown error occurred" };
     }
 }

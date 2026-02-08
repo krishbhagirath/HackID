@@ -7,7 +7,8 @@ import ProjectCard from '~/components/ProjectCard';
 import HackathonCard from '~/components/HackathonCard';
 import { type ProjectResult, Verdict, type Stats, type Hackathon } from '~/types';
 import { INITIAL_PROJECTS, INITIAL_HACKATHONS } from '~/constants';
-import { getHackathons, getProjectsByHackathon } from '~/app/actions';
+import { getHackathons, getProjectsByHackathon, scanUrl } from '~/app/actions';
+import { useRouter } from 'next/navigation';
 
 interface HomeContentProps {
     user?: {
@@ -23,6 +24,8 @@ export default function HomeContent({ user }: HomeContentProps) {
     const [isScanning, setIsScanning] = useState(false);
     
     const [view, setView] = useState<'HACKATHONS' | 'PROJECTS'>('HACKATHONS');
+    const [limit, setLimit] = useState(10);
+    const router = useRouter();
     const [hackathons, setHackathons] = useState<Hackathon[]>(INITIAL_HACKATHONS);
     const [selectedHackathon, setSelectedHackathon] = useState<Hackathon | null>(null);
     const [projects, setProjects] = useState<ProjectResult[]>([]);
@@ -74,13 +77,32 @@ export default function HomeContent({ user }: HomeContentProps) {
         setProjects([]);
     };
 
-    const handleScan = () => {
+    const handleScan = async () => {
         if (!url) return;
         setIsScanning(true);
-        setTimeout(() => {
-            // In a real app, this would trigger a background task and we'd refresh
+        
+        try {
+            const result = await scanUrl(url, limit);
+            if (result.success) {
+                // Refresh data based on current view
+                if (view === 'HACKATHONS') {
+                    const data = await getHackathons();
+                    if (data.length > 0) setHackathons(data);
+                } else if (selectedHackathon) {
+                    const data = await getProjectsByHackathon(selectedHackathon.id);
+                    if (data.length > 0) setProjects(data);
+                }
+                
+                // Refresh server components
+                router.refresh();
+            } else {
+                alert(`Scan failed: ${result.message}`);
+            }
+        } catch (error) {
+            console.error("Scan error:", error);
+        } finally {
             setIsScanning(false);
-        }, 800);
+        }
     };
 
     const handleClear = () => {
@@ -118,6 +140,8 @@ export default function HomeContent({ user }: HomeContentProps) {
                     setMinScore={setMinScore}
                     stats={stats}
                     view={view}
+                    limit={limit}
+                    setLimit={setLimit}
                 />
 
                 <section className="flex-grow">
@@ -201,7 +225,7 @@ export default function HomeContent({ user }: HomeContentProps) {
                             <a className="hover:underline" href="#">System Logs</a>
                         </div>
                         <div className="font-display font-black text-2xl italic">
-                            HACKCHECK_v1
+                            .gitcheck_v1.0
                         </div>
                     </div>
                 </div>

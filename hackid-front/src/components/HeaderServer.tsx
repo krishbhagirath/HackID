@@ -25,7 +25,7 @@ export default function HeaderServer({ isDark, toggleTheme }: HeaderServerProps)
         <header className="brutal-border bg-zinc-900 p-4 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-6">
                 <h1 className="font-display text-3xl md:text-4xl font-black uppercase italic tracking-tighter text-white">
-                    HACKCHECK<span className="text-primary">_</span>
+                    .GITCHECK<span className="text-primary">_</span>
                 </h1>
                 <div className="hidden md:flex items-center gap-2 bg-green-500/20 border-2 border-green-500 px-3 py-1">
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />

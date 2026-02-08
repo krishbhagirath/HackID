@@ -64,9 +64,9 @@ export default function ProjectCard({ project }: ProjectCardProps) {
               GitHub Source
             </a>
           )}
-          <button className="brutal-border font-bold py-3 px-8 uppercase text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+          {/* <button className="brutal-border font-bold py-3 px-8 uppercase text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
             View Source
-          </button>
+          </button> */}
         </div>
       </div>
     </div>

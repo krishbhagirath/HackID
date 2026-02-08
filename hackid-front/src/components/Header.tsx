@@ -21,8 +21,8 @@ export default function Header({ isDark, toggleTheme, user }: HeaderProps) {
             <span className="material-icons text-black text-3xl font-bold">security</span>
           </div>
           <div>
-            <h1 className="font-display text-2xl md:text-3xl uppercase leading-none">HackCheck_v1.0</h1>
-            <p className="text-xs font-bold opacity-70 uppercase tracking-widest">Plagiarism Detection Engine</p>
+            <h1 className="font-display text-2xl md:text-3xl uppercase leading-none">.gitcheck_v1.0</h1>
+            <p className="text-xs font-bold opacity-70 uppercase tracking-widest">Turnitin for Hackathons</p>
           </div>
         </div>
         <div className="flex items-center gap-6">
