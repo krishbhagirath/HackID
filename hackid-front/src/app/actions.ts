@@ -3,9 +3,10 @@
 import { db } from "~/server/db";
 import { type Hackathon, type ProjectResult, Verdict } from "~/types";
 
-export async function getHackathons(): Promise<Hackathon[]> {
+export async function getHackathons(orgId?: string): Promise<Hackathon[]> {
     try {
         const hackathons = await db.hackathons.findMany({
+            where: orgId ? { org_id: orgId } : undefined,
             include: {
                 _count: {
                     select: { projects: true }

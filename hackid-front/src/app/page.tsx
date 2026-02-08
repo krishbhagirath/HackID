@@ -10,5 +10,10 @@ export default async function Home() {
     picture: session.user.picture,
   } : null;
 
-  return <HomeContent user={user} />;
+  // Get organization from user's app_metadata (set in Auth0 Dashboard)
+  const orgId = (session?.user as any)?.app_metadata?.organization ||
+    (session?.user as any)?.organization ||
+    null;
+
+  return <HomeContent user={user} orgId={orgId} />;
 }

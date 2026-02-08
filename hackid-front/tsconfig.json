@@ -46,7 +46,6 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "generated"
+    "node_modules"
   ]
 }

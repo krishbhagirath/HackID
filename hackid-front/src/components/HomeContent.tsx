@@ -16,33 +16,34 @@ interface HomeContentProps {
         email?: string | null;
         picture?: string | null;
     } | null;
+    orgId?: string | null;
 }
 
-export default function HomeContent({ user }: HomeContentProps) {
+export default function HomeContent({ user, orgId }: HomeContentProps) {
     const [isDark, setIsDark] = useState(true);
     const [url, setUrl] = useState('');
     const [isScanning, setIsScanning] = useState(false);
-    
+
     const [view, setView] = useState<'HACKATHONS' | 'PROJECTS'>('HACKATHONS');
     const [limit, setLimit] = useState(10);
     const router = useRouter();
     const [hackathons, setHackathons] = useState<Hackathon[]>(INITIAL_HACKATHONS);
     const [selectedHackathon, setSelectedHackathon] = useState<Hackathon | null>(null);
     const [projects, setProjects] = useState<ProjectResult[]>([]);
-    
+
     const [activeVerdict, setActiveVerdict] = useState<Verdict | 'ALL'>('ALL');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Initial fetch of hackathons
+    // Initial fetch of hackathons (filtered by organization if logged in)
     useEffect(() => {
         const fetchHackathons = async () => {
-            const data = await getHackathons();
+            const data = await getHackathons(orgId || undefined);
             if (data.length > 0) {
                 setHackathons(data);
             }
         };
         fetchHackathons();
-    }, []);
+    }, [orgId]);
 
     const toggleTheme = () => {
         setIsDark(prev => !prev);
@@ -54,7 +55,7 @@ export default function HomeContent({ user }: HomeContentProps) {
 
         setSelectedHackathon(hackathon);
         setIsScanning(true);
-        
+
         // Fetch projects for this hackathon
         const projectsData = await getProjectsByHackathon(hackathonId);
         if (projectsData.length > 0) {
@@ -63,7 +64,7 @@ export default function HomeContent({ user }: HomeContentProps) {
             // Fallback to initial projects if DB is empty for this hackathon
             setProjects(INITIAL_PROJECTS.filter(p => p.hackathon_id === hackathonId));
         }
-        
+
         setIsScanning(false);
         setView('PROJECTS');
         // Reset filters when changing hackathon
@@ -80,19 +81,19 @@ export default function HomeContent({ user }: HomeContentProps) {
     const handleScan = async () => {
         if (!url) return;
         setIsScanning(true);
-        
+
         try {
             const result = await scanUrl(url, limit);
             if (result.success) {
                 // Refresh data based on current view
                 if (view === 'HACKATHONS') {
-                    const data = await getHackathons();
+                    const data = await getHackathons(orgId || undefined);
                     if (data.length > 0) setHackathons(data);
                 } else if (selectedHackathon) {
                     const data = await getProjectsByHackathon(selectedHackathon.id);
                     if (data.length > 0) setProjects(data);
                 }
-                
+
                 // Refresh server components
                 router.refresh();
             } else {
@@ -148,7 +149,7 @@ export default function HomeContent({ user }: HomeContentProps) {
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                         <div>
                             {view === 'PROJECTS' && selectedHackathon && (
-                                <button 
+                                <button
                                     onClick={handleBackToHackathons}
                                     className="flex items-center gap-2 text-primary font-bold uppercase text-xs mb-4 hover:underline"
                                 >
@@ -174,8 +175,8 @@ export default function HomeContent({ user }: HomeContentProps) {
                             </div>
                         </div>
                         <div className="bg-black text-white dark:bg-white dark:text-black px-4 py-2 font-bold text-sm brutal-shadow">
-                            {view === 'HACKATHONS' 
-                                ? `DISPLAYING ${hackathons.length} HACKATHONS` 
+                            {view === 'HACKATHONS'
+                                ? `DISPLAYING ${hackathons.length} HACKATHONS`
                                 : `DISPLAYING ${filteredProjects.length} / ${projects.length} PROJECTS`}
                         </div>
                     </div>
@@ -183,10 +184,10 @@ export default function HomeContent({ user }: HomeContentProps) {
                     <div className="space-y-8">
                         {view === 'HACKATHONS' ? (
                             hackathons.map(hackathon => (
-                                <HackathonCard 
-                                    key={hackathon.id} 
-                                    hackathon={hackathon} 
-                                    onClick={handleHackathonClick} 
+                                <HackathonCard
+                                    key={hackathon.id}
+                                    hackathon={hackathon}
+                                    onClick={handleHackathonClick}
                                 />
                             ))
                         ) : (
@@ -195,18 +196,18 @@ export default function HomeContent({ user }: HomeContentProps) {
                             ))
                         )}
 
-                        {((view === 'PROJECTS' && (filteredProjects.length === 0 || projects.length === 0)) || 
-                          (view === 'HACKATHONS' && hackathons.length === 0)) && (
-                            <div className="text-center py-24 brutal-border bg-zinc-900/50 dark:bg-zinc-900 brutal-shadow-hover transition-all">
-                                <span className="material-icons text-6xl mb-4 text-zinc-300">inventory_2</span>
-                                <h3 className="text-2xl font-display uppercase font-black">
-                                    {view === 'HACKATHONS' ? 'No hackathons found' : 'No projects found'}
-                                </h3>
-                                <p className="font-bold uppercase opacity-50 text-sm mt-2">
-                                    The database returned zero results.
-                                </p>
-                            </div>
-                        )}
+                        {((view === 'PROJECTS' && (filteredProjects.length === 0 || projects.length === 0)) ||
+                            (view === 'HACKATHONS' && hackathons.length === 0)) && (
+                                <div className="text-center py-24 brutal-border bg-zinc-900/50 dark:bg-zinc-900 brutal-shadow-hover transition-all">
+                                    <span className="material-icons text-6xl mb-4 text-zinc-300">inventory_2</span>
+                                    <h3 className="text-2xl font-display uppercase font-black">
+                                        {view === 'HACKATHONS' ? 'No hackathons found' : 'No projects found'}
+                                    </h3>
+                                    <p className="font-bold uppercase opacity-50 text-sm mt-2">
+                                        The database returned zero results.
+                                    </p>
+                                </div>
+                            )}
                     </div>
                 </section>
             </main>
