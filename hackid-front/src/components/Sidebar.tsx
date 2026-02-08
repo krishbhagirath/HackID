@@ -9,8 +9,8 @@ interface SidebarProps {
   isScanning: boolean;
   activeVerdict: Verdict | 'ALL';
   setActiveVerdict: (v: Verdict | 'ALL') => void;
-  minScore: number;
-  setMinScore: (s: number) => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
   stats: Stats;
   view?: 'HACKATHONS' | 'PROJECTS';
   limit: number;
@@ -20,7 +20,7 @@ interface SidebarProps {
 export default function Sidebar({ 
   url, setUrl, onScan, isScanning, 
   activeVerdict, setActiveVerdict,
-  minScore, setMinScore,
+  searchQuery, setSearchQuery,
   stats,
   view = 'PROJECTS',
   limit,
@@ -91,14 +91,13 @@ export default function Sidebar({
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase mb-2">Min. Similarity: {minScore}%</label>
+                <label className="block text-xs font-bold uppercase mb-2">Search Projects</label>
                 <input 
-                  className="w-full h-2 bg-zinc-200 rounded-none appearance-none cursor-pointer accent-primary" 
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={minScore}
-                  onChange={(e) => setMinScore(parseInt(e.target.value))}
+                  className="w-full p-3 brutal-border bg-zinc-900 dark:bg-zinc-800 font-mono text-sm focus:ring-0 focus:outline-none focus:border-primary text-white dark:text-white" 
+                  type="text"
+                  placeholder="enter project name"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
             </div>

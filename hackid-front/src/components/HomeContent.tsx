@@ -31,7 +31,7 @@ export default function HomeContent({ user }: HomeContentProps) {
     const [projects, setProjects] = useState<ProjectResult[]>([]);
     
     const [activeVerdict, setActiveVerdict] = useState<Verdict | 'ALL'>('ALL');
-    const [minScore, setMinScore] = useState(0);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Initial fetch of hackathons
     useEffect(() => {
@@ -68,7 +68,7 @@ export default function HomeContent({ user }: HomeContentProps) {
         setView('PROJECTS');
         // Reset filters when changing hackathon
         setActiveVerdict('ALL');
-        setMinScore(0);
+        setSearchQuery('');
     };
 
     const handleBackToHackathons = () => {
@@ -112,10 +112,10 @@ export default function HomeContent({ user }: HomeContentProps) {
     const filteredProjects = useMemo(() => {
         return projects.filter(p => {
             const matchVerdict = activeVerdict === 'ALL' || p.verdict === activeVerdict;
-            const matchScore = p.score >= minScore;
-            return matchVerdict && matchScore;
+            const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+            return matchVerdict && matchSearch;
         });
-    }, [projects, activeVerdict, minScore]);
+    }, [projects, activeVerdict, searchQuery]);
 
     const stats: Stats = useMemo(() => {
         return {
@@ -136,8 +136,8 @@ export default function HomeContent({ user }: HomeContentProps) {
                     isScanning={isScanning}
                     activeVerdict={activeVerdict}
                     setActiveVerdict={setActiveVerdict}
-                    minScore={minScore}
-                    setMinScore={setMinScore}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
                     stats={stats}
                     view={view}
                     limit={limit}
