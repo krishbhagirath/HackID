@@ -215,17 +215,17 @@ export default function HomeContent({ user }: HomeContentProps) {
                 <div className="max-w-[1400px] mx-auto">
                     <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="font-mono text-xs">
-                            <p>&gt; SOURCE: PRISMA_DB</p>
-                            <p>&gt; MODE: DRILL_DOWN_NAV</p>
-                            <p>&gt; ENGINE: LOCAL_PARSER_V1</p>
+                            <p>&gt; FOUNDER 1: KARL ANDRES</p>
+                            <p>&gt; FOUNDER 2: KRISH BHAGIRATH</p>
+                            <p>&gt; FOUNDER 3: KAJURAN ELANGANATHAN</p>
                         </div>
                         <div className="flex gap-8 uppercase font-bold text-sm">
-                            <a className="hover:underline" href="#">Documentation</a>
-                            <a className="hover:underline" href="#">Config Guide</a>
-                            <a className="hover:underline" href="#">System Logs</a>
+                            <a className="hover:underline" href="#">git</a>
+                            <a className="hover:underline" href="#">it</a>
+                            <a className="hover:underline" href="#">in</a>
                         </div>
                         <div className="font-display font-black text-2xl italic">
-                            .gitcheck_v1.0
+                            .gitcheck
                         </div>
                     </div>
                 </div>
