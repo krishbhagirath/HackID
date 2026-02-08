@@ -68,19 +68,30 @@ class GitHubValidator:
             "React": ["react", "react-dom"],
             "Express": ["express"],
             "MongoDB": ["mongodb", "mongoose"],
-            "PostgreSQL": ["psycopg2", "pg", "postgres"],
+            "PostgreSQL": ["psycopg2", "pg", "postgres", "sql", "database"],
             "AWS": ["boto3", "aws-sdk", "amazonaws"],
             "Firebase": ["firebase"],
             "TypeScript": ["typescript"],
-            "Tailwind": ["tailwindcss"],
-            "Next.js": ["next"],
+            "Tailwind": ["tailwind", "tailwindcss", "@tailwindcss", "tw-"],
+            "Tailwind CSS": ["tailwind", "tailwindcss", "@tailwindcss", "tw-"],
+            "Next.js": ["next", "next.js", "nextjs", "_next"],
             "Flask": ["flask"],
             "FastAPI": ["fastapi"],
-            "Gemini": ["google-generativeai", "gemini"],
-            "Gemini API": ["google-generativeai", "gemini"],
+            "Gemini": ["google-generativeai", "gemini", "google-genai", "generative-ai", "vertexai", "vertex-ai", "@google-cloud/vertexai"],
+            "Gemini API": ["google-generativeai", "gemini", "google-genai", "generative-ai", "vertexai", "vertex-ai", "@google-cloud/vertexai"],
             "OpenAI": ["openai"],
             "OpenCV": ["opencv", "cv2"],
+            "Mapbox GL": ["mapbox-gl", "mapbox"],
+            "WeatherAPI": ["weatherapi", "weather"],
+            "tRPC": ["trpc", "@trpc/server", "@trpc/client"],
+            "Sentinel-Hub": ["sentinelhub", "sentinel-hub"],
+            "OpenRouter": ["openrouter"],
+            "Cursor": ["cursor"],
         }
+
+    def _normalize_tech_name(self, name: str) -> str:
+        """Normalize tech names for fuzzy matching."""
+        return name.lower().replace(" ", "").replace("-", "").replace(".js", "").replace("css", "")
     
     def validate_project(
         self,
@@ -122,7 +133,7 @@ class GitHubValidator:
             return ValidationReport(
                 status="DISQUALIFIED",
                 tech_found=[],
-                tech_missing=claims.get('tech_stack', []),
+                tech_missing=[t['name'] for t in claims.get('tech_stack', [])],
                 team_matched=[],
                 team_unmatched=claims.get('team_members', []),
                 unauthorized_contributors=[],
@@ -140,7 +151,7 @@ class GitHubValidator:
             return ValidationReport(
                 status="DISQUALIFIED",
                 tech_found=[],
-                tech_missing=claims.get('tech_stack', []),
+                tech_missing=[t['name'] for t in claims.get('tech_stack', [])],
                 team_matched=[],
                 team_unmatched=claims.get('team_members', []),
                 unauthorized_contributors=[],
@@ -169,26 +180,37 @@ class GitHubValidator:
             hackathon_end
         )
         
-        # Collect flags
+        # STEP 4: Collect flags (ONLY for CORE tech and CRITICAL issues)
+        core_tech_names = [t['name'] for t in claims.get('tech_stack', []) if t['weight'] >= 1.0]
+        core_tech_missing = [t for t in tech_missing if t in core_tech_names]
+        
         flags = self._collect_flags(
-            tech_missing,
+            core_tech_missing, # Only flag missing CORE tech
             team_unmatched,
             unauthorized,
             time_data
         )
         
         # Determine status
-        status = "VERIFIED" if len(flags) == 0 else "FLAGGED"
+        # ONLY flag as FLAGGED if there are missing CORE technologies. Disqualifications take precedence.
+        status = "VERIFIED"
+        if flags:
+            if any("Hard Disqualification" in f for f in flags):
+                status = "DISQUALIFIED"
+            elif any("Missing claimed technology" in f for f in flags): # This only contains CORE missing tech now
+                status = "FLAGGED"
+            # Otherwise, it stays VERIFIED even with Leeway Review or minor tech notes
         
         # Calculate confidence
         confidence = self._calculate_confidence(
-            len(tech_found),
-            len(tech_missing),
-            len(team_matched),
-            len(team_unmatched),
+            tech_found,
+            tech_missing,
+            team_matched,
+            team_unmatched,
             time_data['in_timeframe'],
             time_data['outside_timeframe'],
-            time_data['leeway_commits']
+            time_data['leeway_commits'],
+            claims.get('tech_stack', []) # Pass full weighted tech
         )
         
         print(f"✅ Validation complete. API calls used: {self.api_calls}")
@@ -284,11 +306,13 @@ class GitHubValidator:
     def _validate_tech_stack(
         self,
         repo,
-        claimed_tech: List[str]
+        claimed_tech_weighted: List[dict]
     ) -> tuple[List[str], List[str]]:
         """Check if claimed technologies exist. (2-5 API calls max)"""
         
         found = []
+        claimed_tech_names = [t['name'] for t in claimed_tech_weighted]
+
         
         # Get language breakdown (1 API call)
         try:
@@ -308,7 +332,7 @@ class GitHubValidator:
             "Swift": "Swift"
         }
         
-        for tech in claimed_tech:
+        for tech in claimed_tech_names:
             if tech in lang_map and lang_map[tech] in languages:
                 found.append(tech)
         
@@ -325,29 +349,47 @@ class GitHubValidator:
                 pass  # File doesn't exist
         
         # Check tech keywords in files
-        for tech in claimed_tech:
+        for tech in claimed_tech_names:
             if tech in found:
                 continue  # Already found via languages
             
             keywords = self.tech_keywords.get(tech, [tech.lower()])
+            normalized_tech = self._normalize_tech_name(tech)
             
+            # Check keywords and normalized version
             for filename, content in file_contents.items():
                 content_lower = content.lower()
+                normalized_content = self._normalize_tech_name(content_lower)
+                
+                # Try keywords first
                 if any(kw in content_lower for kw in keywords):
+                    found.append(tech)
+                    break
+                
+                # Try normalized partial match
+                if normalized_tech and normalized_tech in normalized_content:
                     found.append(tech)
                     break
         
         # TIER 2: Semantic Deep Dive for remaining missing tech
-        missing = [t for t in claimed_tech if t not in found]
+        missing = [t for t in claimed_tech_names if t not in found]
         if missing and self.llm:
             print(f"🕵️  Performing Tier 2 Deep Dive for: {missing}")
             # Batch all missing techs into one semantic check
             batch_found = self._semantic_deep_dive_batch(repo, missing)
-            for tech in batch_found:
-                if tech in missing:
-                    found.append(tech)
-                    missing.remove(tech)
+            
+            # Fuzzy/Case-insensitive matching
+            for tf_name in batch_found:
+                tf_norm = self._normalize_tech_name(tf_name)
+                for m_name in missing:
+                    m_norm = self._normalize_tech_name(m_name)
+                    if tf_norm == m_norm or tf_norm in m_norm or m_norm in tf_norm:
+                        if m_name not in found:
+                            found.append(m_name)
+                            break
         
+        # Recalculate final missing list
+        missing = [t for t in claimed_tech_names if t not in found]
         return found, missing
 
     def _semantic_deep_dive_batch(self, repo, techs: List[str]) -> List[str]:
@@ -499,19 +541,13 @@ Format: {{"found": ["Tech1", "Tech2"]}}
         unauthorized: List[str],
         time_data: dict
     ) -> List[str]:
-        """Collect all issues requiring manual review."""
+        """Collect technical and timeline issues requiring manual review."""
         
         flags = []
         
         # Tech flags
         for tech in tech_missing:
             flags.append(f"Missing claimed technology: {tech}")
-        
-        # Team flags
-        for member in team_unmatched:
-            flags.append(f"Claimed member not found in commits: {member}")
-        for contributor in unauthorized:
-            flags.append(f"Unauthorized contributor found: {contributor}")
         
         # Time flags
         if time_data['pre_start_commits'] > 0:
@@ -527,34 +563,39 @@ Format: {{"found": ["Tech1", "Tech2"]}}
     
     def _calculate_confidence(
         self,
-        tech_found: int,
-        tech_missing: int,
-        team_matched: int,
-        team_unmatched: int,
+        tech_found: List[str],
+        tech_missing: List[str],
+        team_matched: List[str],
+        team_unmatched: List[str],
         commits_in: int,
         commits_out: int,
-        leeway_commits: int = 0
+        leeway_commits: int,
+        weighted_tech: List[dict]
     ) -> float:
-        """Calculate confidence score (0-1)."""
+        """Calculate confidence score (0-1) using tech importance weights (60%) and timeline (40%)."""
         
         scores = []
         
-        # Tech score (40%)
-        if tech_found + tech_missing > 0:
-            tech_score = tech_found / (tech_found + tech_missing)
-            scores.append(tech_score * 0.4)
+        # 1. Tech score (60%) - Weighted by importance
+        if weighted_tech:
+            total_possible_weight = sum(t['weight'] for t in weighted_tech)
+            
+            # Find the weight of what WAS found
+            found_weight = 0
+            for t in weighted_tech:
+                if t['name'] in tech_found:
+                    found_weight += t['weight']
+                elif t['name'] == 'OpenCV' and 'cv2' in tech_found: # Edge case normalization
+                    found_weight += t['weight']
+            
+            tech_score = found_weight / total_possible_weight if total_possible_weight > 0 else 1.0
+            scores.append(tech_score * 0.6)
         
-        # Team score (30%)
-        if team_matched + team_unmatched > 0:
-            team_score = team_matched / (team_matched + team_unmatched)
-            scores.append(team_score * 0.3)
-        
-        # Time score (30%)
-        # Penalize leeway commits slightly (e.g., each leeway commit counts as 0.5 a normal commit for ratio)
+        # 2. Time score (40%)
         total_relevant = commits_in + leeway_commits
         if total_relevant > 0:
             time_score = commits_in / total_relevant
-            scores.append(time_score * 0.3)
+            scores.append(time_score * 0.4)
         
         return sum(scores) if scores else 0.0
     

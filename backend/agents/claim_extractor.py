@@ -11,11 +11,20 @@ from typing import List
 import json
 
 
+class WeightedTech(BaseModel):
+    """A technology claimed to be used, with an importance weight."""
+    name: str = Field(description="Normalized name of the technology (e.g., 'React', 'Python')")
+    weight: float = Field(
+        description="Importance to the project: 1.0 (Core/Crucial), 0.5 (Secondary/Supporting), 0.2 (Minor/Utility)"
+    )
+    reason: str = Field(description="Brief reason for this weight based on the project story")
+
+
 class ProjectClaims(BaseModel):
     """Structured claims extracted from a Devpost project."""
     
-    tech_stack: List[str] = Field(
-        description="Technologies claimed to be used (normalized names like 'React', 'Python', 'AWS')"
+    tech_stack: List[WeightedTech] = Field(
+        description="Technologies claimed to be used with their importance weights"
     )
     
     key_features: List[str] = Field(
@@ -56,6 +65,11 @@ NORMALIZE TECHNOLOGY NAMES:
 - "opencv" → "OpenCV"
 - "postgresql" → "PostgreSQL"
 - "mongodb" → "MongoDB"
+
+ASSIGN WEIGHTS BASED ON RELEVANCE:
+- 1.0 (CORE): The primary framework, language, or AI model mentioned as the "engine" or "core" of the project. (e.g., 'Next.js' for a web app, 'PyTorch' for an ML project).
+- 0.5 (SECONDARY): Important tools or libraries that support core features. (e.g., 'Tailwind', 'Express', 'Firebase').
+- 0.2 (MINOR): Small utility libraries, deployment tools, or common CSS/HTML if not core. (e.g., 'Vercel', 'Dotenv').
 
 EXTRACT SPECIFIC FEATURES (be precise):
 - GOOD: "Real-time chat", "File encryption with AES-256", "Camera motion detection"
