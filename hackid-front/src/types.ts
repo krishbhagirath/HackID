@@ -7,10 +7,21 @@ export enum Verdict {
 
 export interface ProjectResult {
     id: string;
+    hackathon_id?: string;
     name: string;
     submitter: string;
     score: number;
     verdict: Verdict;
+    github_link?: string;
+}
+
+export interface Hackathon {
+    id: string;
+    name: string;
+    devpost_url: string;
+    start_time: string;
+    end_time: string;
+    project_count: number;
 }
 
 export interface Stats {

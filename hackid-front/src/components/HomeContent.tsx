@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Header from '~/components/Header';
 import Sidebar from '~/components/Sidebar';
 import ProjectCard from '~/components/ProjectCard';
-import { type ProjectResult, Verdict, type Stats } from '~/types';
-import { INITIAL_PROJECTS } from '~/constants';
+import HackathonCard from '~/components/HackathonCard';
+import { type ProjectResult, Verdict, type Stats, type Hackathon } from '~/types';
+import { INITIAL_PROJECTS, INITIAL_HACKATHONS } from '~/constants';
+import { getHackathons, getProjectsByHackathon } from '~/app/actions';
 
 interface HomeContentProps {
     user?: {
@@ -19,19 +21,64 @@ export default function HomeContent({ user }: HomeContentProps) {
     const [isDark, setIsDark] = useState(true);
     const [url, setUrl] = useState('');
     const [isScanning, setIsScanning] = useState(false);
-    const [projects, setProjects] = useState<ProjectResult[]>(INITIAL_PROJECTS);
+    
+    const [view, setView] = useState<'HACKATHONS' | 'PROJECTS'>('HACKATHONS');
+    const [hackathons, setHackathons] = useState<Hackathon[]>(INITIAL_HACKATHONS);
+    const [selectedHackathon, setSelectedHackathon] = useState<Hackathon | null>(null);
+    const [projects, setProjects] = useState<ProjectResult[]>([]);
+    
     const [activeVerdict, setActiveVerdict] = useState<Verdict | 'ALL'>('ALL');
     const [minScore, setMinScore] = useState(0);
 
+    // Initial fetch of hackathons
+    useEffect(() => {
+        const fetchHackathons = async () => {
+            const data = await getHackathons();
+            if (data.length > 0) {
+                setHackathons(data);
+            }
+        };
+        fetchHackathons();
+    }, []);
+
     const toggleTheme = () => {
         setIsDark(prev => !prev);
+    };
+
+    const handleHackathonClick = async (hackathonId: string) => {
+        const hackathon = hackathons.find(h => h.id === hackathonId);
+        if (!hackathon) return;
+
+        setSelectedHackathon(hackathon);
+        setIsScanning(true);
+        
+        // Fetch projects for this hackathon
+        const projectsData = await getProjectsByHackathon(hackathonId);
+        if (projectsData.length > 0) {
+            setProjects(projectsData);
+        } else {
+            // Fallback to initial projects if DB is empty for this hackathon
+            setProjects(INITIAL_PROJECTS.filter(p => p.hackathon_id === hackathonId));
+        }
+        
+        setIsScanning(false);
+        setView('PROJECTS');
+        // Reset filters when changing hackathon
+        setActiveVerdict('ALL');
+        setMinScore(0);
+    };
+
+    const handleBackToHackathons = () => {
+        setView('HACKATHONS');
+        setSelectedHackathon(null);
+        setProjects([]);
     };
 
     const handleScan = () => {
         if (!url) return;
         setIsScanning(true);
         setTimeout(() => {
-            setProjects(INITIAL_PROJECTS);
+            // In a real app, this would trigger a background task and we'd refresh
             setIsScanning(false);
         }, 800);
     };
@@ -70,47 +117,70 @@ export default function HomeContent({ user }: HomeContentProps) {
                     minScore={minScore}
                     setMinScore={setMinScore}
                     stats={stats}
+                    view={view}
                 />
 
                 <section className="flex-grow">
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                         <div>
-                            <h2 className="font-display text-5xl md:text-6xl uppercase leading-none mb-2 italic">Results</h2>
+                            {view === 'PROJECTS' && selectedHackathon && (
+                                <button 
+                                    onClick={handleBackToHackathons}
+                                    className="flex items-center gap-2 text-primary font-bold uppercase text-xs mb-4 hover:underline"
+                                >
+                                    <span className="material-icons text-sm">arrow_back</span>
+                                    Back to Hackathons
+                                </button>
+                            )}
+                            <h2 className="font-display text-5xl md:text-6xl uppercase leading-none mb-2 italic">
+                                {view === 'HACKATHONS' ? 'Hackathons' : 'Projects'}
+                            </h2>
                             <div className="flex items-center gap-4">
                                 <p className="font-bold opacity-60 uppercase text-sm tracking-tighter">
-                                    Local Database Scan
+                                    {view === 'HACKATHONS' ? 'Scanned Hackathons' : `Results for ${selectedHackathon?.name}`}
                                 </p>
-                                <button
-                                    onClick={handleClear}
-                                    className="text-[10px] font-bold uppercase border-b border-brutal-red text-brutal-red hover:bg-brutal-red hover:text-white px-1"
-                                >
-                                    Clear Results
-                                </button>
+                                {view === 'PROJECTS' && (
+                                    <button
+                                        onClick={handleClear}
+                                        className="text-[10px] font-bold uppercase border-b border-brutal-red text-brutal-red hover:bg-brutal-red hover:text-white px-1"
+                                    >
+                                        Clear Results
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <div className="bg-black text-white dark:bg-white dark:text-black px-4 py-2 font-bold text-sm brutal-shadow">
-                            DISPLAYING {filteredProjects.length} / {projects.length} ENTRIES
+                            {view === 'HACKATHONS' 
+                                ? `DISPLAYING ${hackathons.length} HACKATHONS` 
+                                : `DISPLAYING ${filteredProjects.length} / ${projects.length} PROJECTS`}
                         </div>
                     </div>
 
                     <div className="space-y-8">
-                        {filteredProjects.map(project => (
-                            <ProjectCard key={project.id} project={project} />
-                        ))}
+                        {view === 'HACKATHONS' ? (
+                            hackathons.map(hackathon => (
+                                <HackathonCard 
+                                    key={hackathon.id} 
+                                    hackathon={hackathon} 
+                                    onClick={handleHackathonClick} 
+                                />
+                            ))
+                        ) : (
+                            filteredProjects.map(project => (
+                                <ProjectCard key={project.id} project={project} />
+                            ))
+                        )}
 
-                        {(filteredProjects.length === 0 || projects.length === 0) && (
+                        {((view === 'PROJECTS' && (filteredProjects.length === 0 || projects.length === 0)) || 
+                          (view === 'HACKATHONS' && hackathons.length === 0)) && (
                             <div className="text-center py-24 brutal-border bg-zinc-900/50 dark:bg-zinc-900 brutal-shadow-hover transition-all">
                                 <span className="material-icons text-6xl mb-4 text-zinc-300">inventory_2</span>
-                                <h3 className="text-2xl font-display uppercase font-black">No projects found</h3>
-                                <p className="font-bold uppercase opacity-50 text-sm mt-2">The scanner returned zero results for this directory.</p>
-                                {projects.length === 0 && (
-                                    <button
-                                        onClick={handleScan}
-                                        className="mt-6 bg-primary text-black font-bold py-2 px-8 brutal-border brutal-shadow hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all uppercase"
-                                    >
-                                        Load Initial Database
-                                    </button>
-                                )}
+                                <h3 className="text-2xl font-display uppercase font-black">
+                                    {view === 'HACKATHONS' ? 'No hackathons found' : 'No projects found'}
+                                </h3>
+                                <p className="font-bold uppercase opacity-50 text-sm mt-2">
+                                    The database returned zero results.
+                                </p>
                             </div>
                         )}
                     </div>
@@ -121,8 +191,8 @@ export default function HomeContent({ user }: HomeContentProps) {
                 <div className="max-w-[1400px] mx-auto">
                     <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="font-mono text-xs">
-                            <p>&gt; SOURCE: CONSTANTS.TS</p>
-                            <p>&gt; MODE: STATIC_READONLY</p>
+                            <p>&gt; SOURCE: PRISMA_DB</p>
+                            <p>&gt; MODE: DRILL_DOWN_NAV</p>
                             <p>&gt; ENGINE: LOCAL_PARSER_V1</p>
                         </div>
                         <div className="flex gap-8 uppercase font-bold text-sm">
@@ -131,7 +201,7 @@ export default function HomeContent({ user }: HomeContentProps) {
                             <a className="hover:underline" href="#">System Logs</a>
                         </div>
                         <div className="font-display font-black text-2xl italic">
-                            HACKCHECK_STATIC
+                            HACKCHECK_v1
                         </div>
                     </div>
                 </div>

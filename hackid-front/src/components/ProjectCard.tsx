@@ -53,6 +53,17 @@ export default function ProjectCard({ project }: ProjectCardProps) {
           <button className="bg-black text-white dark:bg-white dark:text-black font-bold py-3 px-8 uppercase text-sm hover:bg-primary hover:text-black transition-all brutal-shadow active:translate-x-1 active:translate-y-1 active:shadow-none">
             Detailed Analysis
           </button>
+          {project.github_link && (
+            <a 
+              href={project.github_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-zinc-800 text-white font-bold py-3 px-8 uppercase text-sm brutal-border hover:bg-zinc-700 transition-colors flex items-center gap-2"
+            >
+              <span className="material-icons text-sm">code</span>
+              GitHub Source
+            </a>
+          )}
           <button className="brutal-border font-bold py-3 px-8 uppercase text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
             View Source
           </button>
