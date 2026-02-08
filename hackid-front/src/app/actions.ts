@@ -67,9 +67,8 @@ export async function scanUrl(url: string, limit: number): Promise<{ success: bo
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                url: url,
-                limit: limit,
-                // Add any other fields you need here
+                hackathon_url: url,
+                max_projects: limit,
             }),
         });
 
