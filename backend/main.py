@@ -6,8 +6,8 @@ import os
 from dotenv import load_dotenv
 
 # Import the existing pipeline
-from pipeline import ValidationPipeline
-from database import init_db
+from backend.pipeline import ValidationPipeline
+from backend.database import init_db
 
 load_dotenv()
 

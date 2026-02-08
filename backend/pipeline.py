@@ -4,10 +4,10 @@ Orchestrates both agents to validate a Devpost project.
 Now uses Gemini + GitHub API with minimal requests.
 """
 
-from agents.claim_extractor import ClaimExtractor
-from agents.github_validator import GitHubValidator
-from scraper import DevpostScraper
-from database import SessionLocal, Hackathon, Project
+from backend.agents.claim_extractor import ClaimExtractor
+from backend.agents.github_validator import GitHubValidator
+from backend.scraper import DevpostScraper
+from backend.database import SessionLocal, Hackathon, Project
 import json
 import os
 import traceback
