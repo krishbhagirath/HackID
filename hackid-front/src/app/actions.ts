@@ -2,6 +2,7 @@
 
 import { db } from "~/server/db";
 import { type Hackathon, type ProjectResult, Verdict } from "~/types";
+import { env } from "~/env";
 
 export async function getHackathons(orgId?: string): Promise<Hackathon[]> {
     try {
@@ -62,7 +63,7 @@ export async function scanUrl(url: string, limit: number): Promise<{ success: bo
     try {
         // This is a server action that performs a POST request to your external API
         // You can modify the request body here as requested
-        const response = await fetch('YOUR_API_ENDPOINT_HERE', {
+        const response = await fetch(env.BACKEND_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -74,6 +75,9 @@ export async function scanUrl(url: string, limit: number): Promise<{ success: bo
         });
 
         if (!response.ok) {
+            if (response.status === 502 || response.status === 504) {
+                throw new Error("Backend timeout: The analysis is taking too long for the gateway. Please try scanning a smaller number of projects (lower limit).");
+            }
             throw new Error(`API request failed with status ${response.status}`);
         }
 

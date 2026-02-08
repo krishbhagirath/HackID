@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 
 interface UserButtonProps {
     user: {
@@ -33,19 +34,21 @@ export default function UserButton({ user, isVerified, role }: UserButtonProps) 
                 className="flex items-center gap-3 bg-zinc-800 brutal-border px-3 py-2 hover:bg-zinc-700 transition-colors"
             >
                 {user.picture ? (
-                    <img
+                    <Image
                         src={user.picture}
-                        alt={user.name || "User"}
+                        alt={user.name ?? "User"}
+                        width={32}
+                        height={32}
                         className="w-8 h-8 rounded-full border-2 border-white"
                     />
                 ) : (
                     <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-black font-bold">
-                        {user.name?.charAt(0) || "U"}
+                        {user.name?.charAt(0) ?? "U"}
                     </div>
                 )}
                 <div className="text-left hidden sm:block">
                     <div className="text-sm font-bold truncate max-w-[120px]">
-                        {user.name || user.email}
+                        {user.name ?? (user.email ?? "User")}
                     </div>
                     <div className={`text-xs uppercase ${isVerified ? "text-green-400" : "text-red-400"}`}>
                         {role}

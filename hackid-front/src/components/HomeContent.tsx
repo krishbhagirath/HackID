@@ -37,7 +37,7 @@ export default function HomeContent({ user, orgId }: HomeContentProps) {
     // Initial fetch of hackathons (filtered by organization if logged in)
     useEffect(() => {
         const fetchHackathons = async () => {
-            const data = await getHackathons(orgId || undefined);
+            const data = await getHackathons(orgId ?? undefined);
             if (data.length > 0) {
                 setHackathons(data);
             }
@@ -87,7 +87,7 @@ export default function HomeContent({ user, orgId }: HomeContentProps) {
             if (result.success) {
                 // Refresh data based on current view
                 if (view === 'HACKATHONS') {
-                    const data = await getHackathons(orgId || undefined);
+                    const data = await getHackathons(orgId ?? undefined);
                     if (data.length > 0) setHackathons(data);
                 } else if (selectedHackathon) {
                     const data = await getProjectsByHackathon(selectedHackathon.id);

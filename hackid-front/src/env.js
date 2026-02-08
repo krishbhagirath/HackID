@@ -15,6 +15,7 @@ export const env = createEnv({
     AUTH0_DOMAIN: z.string().min(1),
     AUTH0_CLIENT_ID: z.string().min(1),
     AUTH0_CLIENT_SECRET: z.string().min(1),
+    BACKEND_API_URL: z.string().url(),
   },
 
   /**
@@ -39,6 +40,7 @@ export const env = createEnv({
     AUTH0_DOMAIN: process.env.AUTH0_DOMAIN,
     AUTH0_CLIENT_ID: process.env.AUTH0_CLIENT_ID,
     AUTH0_CLIENT_SECRET: process.env.AUTH0_CLIENT_SECRET,
+    BACKEND_API_URL: process.env.BACKEND_API_URL,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

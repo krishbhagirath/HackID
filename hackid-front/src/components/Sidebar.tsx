@@ -75,10 +75,10 @@ export default function Sidebar({
               <div>
                 <label className="block text-xs font-bold uppercase mb-2">Verdict Level</label>
                 <div className="flex flex-wrap gap-2">
-                  {(Object.values(Verdict) as string[]).concat(['ALL']).map((v) => (
+                  {(Object.values(Verdict) as (Verdict | 'ALL')[]).concat(['ALL']).map((v) => (
                     <button 
                       key={v}
-                      onClick={() => setActiveVerdict(v as any)}
+                      onClick={() => setActiveVerdict(v)}
                       className={`px-3 py-1 text-[10px] font-bold brutal-border transition-colors ${
                         activeVerdict === v 
                           ? (v === Verdict.INVALID || v === Verdict.LEAN_INVALID ? 'bg-brutal-red text-white' : 'bg-brutal-green text-black')

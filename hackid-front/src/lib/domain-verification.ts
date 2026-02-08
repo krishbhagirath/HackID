@@ -69,7 +69,7 @@ export interface VerificationResult {
  * Verify if an email belongs to an approved organizer domain
  */
 export function verifyOrganizerDomain(email: string): VerificationResult {
-    const domain = email.split("@")[1]?.toLowerCase() || "";
+    const domain = email.split("@")[1]?.toLowerCase() ?? "";
 
     // Check MLH
     if (domain === "mlh.io" || domain === "majorleaguehacking.com") {
