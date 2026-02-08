@@ -115,6 +115,37 @@ class DevpostScraper:
             print(f"Error scraping schedule: {e}")
             return []
     
+    def scrape_hackathon_name(self, hackathon_url: str) -> str:
+        """
+        Scrape the hackathon name from its main landing page.
+        """
+        try:
+            # Try to get from the main page
+            response = self.session.get(hackathon_url.rstrip('/') + '/')
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Selector 1: The main H1 title
+            h1 = soup.find('h1')
+            if h1 and h1.text.strip():
+                return h1.text.strip()
+            
+            # Selector 2: Meta og:title
+            meta_title = soup.find('meta', property='og:title')
+            if meta_title and meta_title.get('content'):
+                return meta_title.get('content').split('|')[0].strip()
+            
+            # Selector 3: Title tag
+            title_tag = soup.find('title')
+            if title_tag and title_tag.text.strip():
+                name = title_tag.text.split('|')[0].strip()
+                return name
+                
+            return "Unknown Hackathon"
+        except Exception as e:
+            print(f"⚠️ Error scraping hackathon name: {e}")
+            return "Unknown Hackathon"
+    
     def scrape_project(self, url: str) -> Dict:
         """
         Scrape a single Devpost project page.
@@ -248,8 +279,28 @@ class DevpostScraper:
     
     def _extract_hackathon(self, soup: BeautifulSoup) -> str:
         """Extract the hackathon name this project was submitted to."""
+        # Selector 1: Check side panel "Submitted to" section
+        aside = soup.find('aside', id='app-details-right')
+        if aside:
+            h2 = aside.find('h2', string=lambda s: s and 'SUBMITTED TO' in s.upper())
+            if h2:
+                link = h2.find_next('a')
+                if link:
+                    return link.text.strip()
+        
+        # Selector 2: Fallback to any link inside a 'submissions' container
+        submissions = soup.find(id='submissions')
+        if submissions:
+            link = submissions.find('a', href=lambda h: h and 'devpost.com' in h)
+            if link:
+                return link.text.strip()
+                
+        # Selector 3: Legacy id (just in case)
         hackathon_tag = soup.find('a', id='parent_hackathon_link')
-        return hackathon_tag.text.strip() if hackathon_tag else ''
+        if hackathon_tag:
+            return hackathon_tag.text.strip()
+            
+        return "Unknown Hackathon"
     
     def _extract_prizes(self, soup: BeautifulSoup) -> List[str]:
         """Extract any prizes won."""

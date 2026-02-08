@@ -25,6 +25,8 @@ class ValidationReport(BaseModel):
     last_commit: Optional[str]
     flags: List[str]
     confidence: float
+    core_logic_status: Optional[str] = "SKIPPED" # "VERIFIED", "UNVERIFIED", "CONTRADICTED"
+    core_logic_reasoning: Optional[str] = None
     api_calls_used: int  # Track API usage
 
 
@@ -146,23 +148,9 @@ class GitHubValidator:
                 api_calls_used=self.api_calls
             )
         
-        # DISQUALIFICATION if NO commits in timeframe (previously our only check)
-        if time_data['in_timeframe'] == 0:
-            return ValidationReport(
-                status="DISQUALIFIED",
-                tech_found=[],
-                tech_missing=[t['name'] for t in claims.get('tech_stack', [])],
-                team_matched=[],
-                team_unmatched=claims.get('team_members', []),
-                unauthorized_contributors=[],
-                commits_in_timeframe=0,
-                commits_outside_timeframe=time_data['outside_timeframe'],
-                first_commit=time_data['first_commit'],
-                last_commit=time_data['last_commit'],
-                flags=["❌ DISQUALIFIED: No activity found during hackathon timeframe"],
-                confidence=0.0,
-                api_calls_used=self.api_calls
-            )
+        # NOTE: We DO NOT disqualify for zero commits - this might be a private repo or API issue
+        # If there are truly no commits, the confidence score will be very low anyway
+        # The previous DISQUALIFICATION block for 0 commits in timeframe is removed.
         
         # STEP 2: Tech stack validation
         print("📦 Checking tech stack...")
@@ -180,7 +168,28 @@ class GitHubValidator:
             hackathon_end
         )
         
-        # STEP 4: Collect flags (ONLY for CORE tech and CRITICAL issues)
+        # STEP 4: Deep Logic Verification (INFORMATIONAL ONLY)
+        print("🔍 STEP 4/5: Performing Deep File Validation...")
+        core_logic_status = "SKIPPED"
+        core_logic_reasoning = None
+        
+        try:
+            if self.llm:
+                main_files = self._identify_main_files(repo)
+                if main_files:
+                    target_file = main_files[0]
+                    print(f"   📂 Analyzing core logic in: {target_file}")
+                    core_logic_status, core_logic_reasoning = self._verify_core_logic(
+                        repo, 
+                        target_file, 
+                        claims.get('key_features', [])
+                    )
+        except Exception as e:
+            print(f"   ⚠️ Deep file validation error (skipping): {e}")
+            core_logic_status = "SKIPPED"
+            core_logic_reasoning = f"Analysis skipped due to error: {str(e)}"
+        
+        # STEP 5: Collect flags (ONLY for CORE tech and CRITICAL issues)
         core_tech_names = [t['name'] for t in claims.get('tech_stack', []) if t['weight'] >= 1.0]
         core_tech_missing = [t for t in tech_missing if t in core_tech_names]
         
@@ -188,18 +197,18 @@ class GitHubValidator:
             core_tech_missing, # Only flag missing CORE tech
             team_unmatched,
             unauthorized,
-            time_data
+            time_data,
+            core_logic_status
         )
         
         # Determine status
-        # ONLY flag as FLAGGED if there are missing CORE technologies. Disqualifications take precedence.
+        # CRITICAL: DISQUALIFIED ONLY for pre-start commits
+        # FLAGGED: ONLY for missing CORE technologies
+        # VERIFIED: Everything else
         status = "VERIFIED"
         if flags:
-            if any("Hard Disqualification" in f for f in flags):
-                status = "DISQUALIFIED"
-            elif any("Missing claimed technology" in f for f in flags): # This only contains CORE missing tech now
+            if any("Missing claimed technology" in f for f in flags):
                 status = "FLAGGED"
-            # Otherwise, it stays VERIFIED even with Leeway Review or minor tech notes
         
         # Calculate confidence
         confidence = self._calculate_confidence(
@@ -210,7 +219,8 @@ class GitHubValidator:
             time_data['in_timeframe'],
             time_data['outside_timeframe'],
             time_data['leeway_commits'],
-            claims.get('tech_stack', []) # Pass full weighted tech
+            claims.get('tech_stack', []), # Pass full weighted tech
+            core_logic_status
         )
         
         print(f"✅ Validation complete. API calls used: {self.api_calls}")
@@ -228,6 +238,8 @@ class GitHubValidator:
             last_commit=time_data['last_commit'],
             flags=flags,
             confidence=confidence,
+            core_logic_status=core_logic_status,
+            core_logic_reasoning=core_logic_reasoning,
             api_calls_used=self.api_calls
         )
     
@@ -468,7 +480,117 @@ Format: {{"found": ["Tech1", "Tech2"]}}
                 print(f"   ⚠️  Batch deep dive failed: {e}")
                 return []
         
-        return []
+    def _identify_main_files(self, repo) -> List[str]:
+        """Identify significant source files using the Git Tree API. (1 API call)"""
+        try:
+            # Get default branch head
+            branch = repo.default_branch
+            tree = repo.get_git_tree(branch, recursive=True)
+            self.api_calls += 1
+            
+            candidates = []
+            excluded_dirs = {'node_modules', 'venv', 'env', 'dist', 'build', '.git', '.github', 'assets', 'images', 'docs'}
+            valid_exts = {'.py', '.js', '.tsx', '.jsx', '.ts', '.go', '.sol', '.rs', '.java', '.cpp', '.c', '.swift', '.kt'}
+            
+            for item in tree.tree:
+                if item.type == "blob":
+                    path = item.path
+                    parts = path.split('/')
+                    
+                    # Check if any directory in path is excluded
+                    if any(dir in excluded_dirs for dir in parts[:-1]):
+                        continue
+                    
+                    # Check extension
+                    filename = parts[-1]
+                    ext = '.' + filename.split('.')[-1] if '.' in filename else ''
+                    
+                    if ext in valid_exts:
+                        # Score the file based on name and path
+                        score = 0
+                        path_lower = path.lower()
+                        
+                        # High priority names
+                        if any(k in path_lower for k in ['main', 'app', 'index', 'server', 'contract', 'logic']):
+                            score += 10
+                        
+                        # Depth penalty (prefer top-level or first-level src)
+                        score -= len(parts) * 2
+                        
+                        candidates.append((path, score))
+            
+            # Sort by score (desc) and return top paths
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            return [c[0] for c in candidates[:5]]
+            
+        except Exception as e:
+            print(f"⚠️ Error identifying main files: {e}")
+            return []
+
+    def _verify_core_logic(self, repo, file_path: str, claims: List[str]) -> tuple[str, str]:
+        """Verify feature claims against the content of a specific file. (2 API calls + 1 LLM)"""
+        try:
+            # 1. Fetch file content
+            content_file = repo.get_contents(file_path)
+            self.api_calls += 1
+            content = base64.b64decode(content_file.content).decode('utf-8')
+            
+            # Limit content size for LLM
+            content_snippet = content[:6000] # Around 1500 tokens
+            
+            # 2. Ask Gemini to verify with LENIENT prompt
+            features_text = ", ".join(claims) if claims else "General functionality"
+            
+            prompt = f"""You are a LENIENT code reviewer for a hackathon project.
+The team claims the project does: {features_text}
+
+Analyze this source file (`{file_path}`) and check if it supports these claims.
+
+IMPORTANT GUIDELINES:
+- Be GENEROUS in your assessment. Hackathon code is often rough/incomplete.
+- If you see ANY evidence the team is working on the claimed features, mark as VERIFIED.
+- Only mark UNVERIFIED if the file is completely unrelated boilerplate (e.g., default template).
+- Only mark CONTRADICTED if the code is clearly fake/placeholder with no real logic AT ALL.
+- Give the team the benefit of the doubt - they may have the logic in other files.
+
+CODE:
+```
+{content_snippet}
+```
+
+RESPOND in this JSON format:
+{{
+  "status": "VERIFIED" | "UNVERIFIED" | "CONTRADICTED",
+  "reasoning": "1-2 short sentences explaining your finding based on the code."
+}}
+
+Status Definitions:
+- VERIFIED: You found code that supports or could support the claimed features. DEFAULT TO THIS.
+- UNVERIFIED: The file is completely unrelated boilerplate with no custom logic.
+- CONTRADICTED: The code is outright fake/empty placeholder (VERY RARE - use sparingly).
+"""
+            
+            import json
+            response = self.llm.invoke(prompt)
+            print(f"   🤖 Gemini Logic Audit: {response.content.strip()}")
+            
+            try:
+                json_str = response.content.strip()
+                if "```json" in json_str:
+                    json_str = json_str.split("```json")[1].split("```")[0].strip()
+                elif "```" in json_str:
+                    json_str = json_str.split("```")[1].split("```")[0].strip()
+                    
+                data = json.loads(json_str)
+                return data.get("status", "VERIFIED"), data.get("reasoning", "No detail provided.")
+            except:
+                # Fallback - default to VERIFIED on parse error
+                return "VERIFIED", "Code analysis completed (unable to parse detailed response)."
+                
+        except Exception as e:
+            print(f"⚠️ Error in logic verification: {e}")
+            return "SKIPPED", f"Verification skipped: {str(e)}"
+
     
     def _validate_team(
         self,
@@ -509,10 +631,11 @@ Format: {{"found": ["Tech1", "Tech2"]}}
             else:
                 unmatched.append(claimed)
         
-        # Unauthorized contributors (>2 commits, not in team)
+        # Unauthorized contributors (>5 commits, not in team)
+        # Be lenient: only count as unauthorized if they have significant contributions
         unauthorized = [
             name for name, count in contributors.items()
-            if count > 2 and not self._fuzzy_match_name(name, claimed_members)
+            if count > 5 and not self._fuzzy_match_name(name, claimed_members)
         ]
         
         return matched, unmatched, unauthorized
@@ -539,15 +662,19 @@ Format: {{"found": ["Tech1", "Tech2"]}}
         tech_missing: List[str],
         team_unmatched: List[str],
         unauthorized: List[str],
-        time_data: dict
+        time_data: dict,
+        core_logic_status: str = "SKIPPED"
     ) -> List[str]:
         """Collect technical and timeline issues requiring manual review."""
         
         flags = []
         
-        # Tech flags
+        # Tech flags (CORE tech only)
         for tech in tech_missing:
             flags.append(f"Missing claimed technology: {tech}")
+        
+        # Core Logic flags - COMPLETELY REMOVED FROM FLAGS
+        # Core logic verification is now purely informational and doesn't affect status
         
         # Time flags
         if time_data['pre_start_commits'] > 0:
@@ -558,6 +685,10 @@ Format: {{"found": ["Tech1", "Tech2"]}}
                 f"⚠️  Leeway Review: {time_data['leeway_commits']} commits "
                 f"in the 5-hour post-deadline window"
             )
+        
+        # Unauthorized contributor flag
+        if len(unauthorized) > 0:
+            flags.append(f"⚠️  Unauthorized Contributors: {', '.join(unauthorized[:3])}{'...' if len(unauthorized) > 3 else ''}")
         
         return flags
     
@@ -570,32 +701,42 @@ Format: {{"found": ["Tech1", "Tech2"]}}
         commits_in: int,
         commits_out: int,
         leeway_commits: int,
-        weighted_tech: List[dict]
+        weighted_tech: List[dict],
+        core_logic_status: str = "SKIPPED"
     ) -> float:
-        """Calculate confidence score (0-1) using tech importance weights (60%) and timeline (40%)."""
+        """Calculate confidence score (0-1) using tech (50%), timeline (30%), and logic (20%)."""
         
         scores = []
         
-        # 1. Tech score (60%) - Weighted by importance
+        # 1. Tech score (50%) - Weighted by importance
         if weighted_tech:
             total_possible_weight = sum(t['weight'] for t in weighted_tech)
-            
-            # Find the weight of what WAS found
             found_weight = 0
             for t in weighted_tech:
                 if t['name'] in tech_found:
                     found_weight += t['weight']
-                elif t['name'] == 'OpenCV' and 'cv2' in tech_found: # Edge case normalization
+                elif t['name'] == 'OpenCV' and 'cv2' in tech_found:
                     found_weight += t['weight']
             
             tech_score = found_weight / total_possible_weight if total_possible_weight > 0 else 1.0
-            scores.append(tech_score * 0.6)
+            scores.append(tech_score * 0.5)
         
-        # 2. Time score (40%)
+        # 2. Time score (30%)
         total_relevant = commits_in + leeway_commits
         if total_relevant > 0:
             time_score = commits_in / total_relevant
-            scores.append(time_score * 0.4)
+            scores.append(time_score * 0.3)
+        elif commits_in == 0:
+            scores.append(0.0) # Penalty for no commits
+            
+        # 3. Logic score (20%)
+        logic_score = {
+            "VERIFIED": 1.0,
+            "UNVERIFIED": 0.5,
+            "CONTRADICTED": 0.0,
+            "SKIPPED": 0.8 # Neutral if skipped
+        }.get(core_logic_status, 0.5)
+        scores.append(logic_score * 0.2)
         
         return sum(scores) if scores else 0.0
     

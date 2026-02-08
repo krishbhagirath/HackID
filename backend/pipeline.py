@@ -10,6 +10,7 @@ from scraper import DevpostScraper
 from database import SessionLocal, Hackathon, Project
 import json
 import os
+import traceback
 from sqlalchemy.dialects.postgresql import insert
 
 
@@ -23,50 +24,78 @@ class ValidationPipeline:
             llm=self.claim_extractor.llm
         )
     
-    def save_to_supabase(self, org_id: str, hackathon_url: str, devpost_data: dict, result: dict):
+    def save_to_supabase(self, hackathon_url: str, devpost_data: dict, result: dict):
         """
         Save hackathon and project result to Supabase.
+        org_id is kept empty as requested.
         """
         db = SessionLocal()
         try:
             # 1. Upsert Hackathon (using devpost_url as unique key)
-            # We strip trailing slash for consistency
             clean_hackathon_url = hackathon_url.rstrip('/')
             
-            # Using SQLAlchemy ORM for better compatibility with UUID generators
             hackathon = db.query(Hackathon).filter(Hackathon.devpost_url == clean_hackathon_url).first()
             
             if not hackathon:
+                hackathon_name = (devpost_data.get('hackathon') or 
+                                 result.get('hackathon_name') or 
+                                 "Unnamed Hackathon")
+                
+                # Double check for empty string
+                if not hackathon_name.strip():
+                    hackathon_name = "Unnamed Hackathon"
+                    
                 hackathon = Hackathon(
-                    org_id=org_id,
-                    name=devpost_data.get('hackathon') or "Unnamed Hackathon",
+                    org_id="", # Empty as requested
+                    name=hackathon_name,
                     devpost_url=clean_hackathon_url,
                     start_time=devpost_data.get('start_time'),
                     end_time=devpost_data.get('end_time')
                 )
                 db.add(hackathon)
-                db.flush() # Get the generated hackathon_id
+                db.flush() 
             else:
                 # Update existing hackathon if data changed
-                hackathon.name = devpost_data.get('hackathon') or hackathon.name
-                hackathon.start_time = devpost_data.get('start_time') or hackathon.start_time
-                hackathon.end_time = devpost_data.get('end_time') or hackathon.end_time
+                updates_made = False
+                new_name = devpost_data.get('hackathon') or result.get('hackathon_name')
+                if new_name and new_name.strip() and hackathon.name != new_name:
+                    hackathon.name = new_name
+                    updates_made = True
+                
+                if devpost_data.get('start_time') and hackathon.start_time != devpost_data.get('start_time'):
+                    hackathon.start_time = devpost_data.get('start_time')
+                    updates_made = True
+                
+                if devpost_data.get('end_time') and hackathon.end_time != devpost_data.get('end_time'):
+                    hackathon.end_time = devpost_data.get('end_time')
+                    updates_made = True
             
-            # 2. Save Project
-            project = Project(
-                hackathon_id=hackathon.hackathon_id,
-                source_url=devpost_data.get('url'),
-                title=devpost_data.get('title'),
-                github_repo_link=devpost_data.get('github_repo'),
-                data=result # Store full validation JSON
-            )
-            db.add(project)
+            # 2. Upsert Project
+            source_url = devpost_data.get('url')
+            project = db.query(Project).filter(Project.source_url == source_url).first()
+            
+            if project:
+                project.hackathon_id = hackathon.hackathon_id
+                project.title = devpost_data.get('title')
+                project.github_repo_link = devpost_data.get('github_repo')
+                project.data = result
+            else:
+                project = Project(
+                    hackathon_id=hackathon.hackathon_id,
+                    source_url=source_url,
+                    title=devpost_data.get('title'),
+                    github_repo_link=devpost_data.get('github_repo'),
+                    data=result 
+                )
+                db.add(project)
+                
             db.commit()
             print(f"   ✓ Saved to Supabase: {devpost_data['title']}")
             
         except Exception as e:
             db.rollback()
             print(f"   ✗ Database error: {str(e)}")
+            traceback.print_exc()
         finally:
             db.close()
     
@@ -94,23 +123,34 @@ class ValidationPipeline:
             print(f"   ✓ Found {len(claims.team_members)} team members\n")
         except Exception as e:
             return {
-                "final_status": "ERROR",
+                "status": "ERROR",
                 "error": f"Claim extraction failed: {str(e)}",
                 "project_title": devpost_data['title'],
                 "description": "❌ Failed to extract claims from Devpost"
             }
         
-        # Step 2: Validate GitHub
+        print("🔍 STEP 2/2: Validating GitHub repository...")
         github_url = devpost_data.get('github_repo')
         if not github_url:
             return {
-                "final_status": "ERROR",
-                "error": "No GitHub repository found in Devpost",
                 "project_title": devpost_data['title'],
-                "description": "❌ No GitHub repository linked to this project"
+                "status": "DISQUALIFIED",
+                "reasoning": "Disqualified: No GitHub repository linked to this project (Hard rule violation).",
+                "confidence": 0.0,
+                "description": "🚫 **DISQUALIFIED**\nNo GitHub repository found in Devpost. Project cannot be validated without code access.",
+                "links": {
+                    "devpost": devpost_data['url'],
+                    "github": None
+                },
+                "findings": {
+                    "tech_stack": {"found": [], "missing": []},
+                    "team": {"matched": [], "unmatched": [], "unauthorized": []},
+                    "core_logic": {"status": "SKIPPED", "reasoning": "No GitHub link found"},
+                    "timeline": {"commits_in": 0, "suspect_commits": 0, "first": None, "last": None}
+                },
+                "validation_flags": ["NO_GITHUB_LINK"],
+                "api_usage": 0
             }
-        
-        print("🔍 STEP 2/2: Validating GitHub repository...")
         try:
             report = self.github_validator.validate_project(
                 github_url=github_url,
@@ -120,7 +160,7 @@ class ValidationPipeline:
             )
         except Exception as e:
             return {
-                "final_status": "ERROR",
+                "status": "ERROR",
                 "error": f"GitHub validation failed: {str(e)}",
                 "project_title": devpost_data['title'],
                 "description": f"❌ Failed to access GitHub: {str(e)}"
@@ -133,18 +173,40 @@ class ValidationPipeline:
         description = self._generate_description(report, claims.model_dump())
         
         # Combine results
+        # Combine results into optimized structure
         return {
             "project_title": devpost_data['title'],
-            "project_url": devpost_data['url'],
-            "github_url": github_url,
-            "final_status": report.status,
+            "status": report.status,
             "reasoning": reasoning,
-            "confidence": report.confidence,
-            "claims": claims.model_dump(),
-            "validation": report.model_dump(),
-            "flags": report.flags,
-            "api_calls_used": report.api_calls_used,
-            "description": description
+            "confidence": round(report.confidence, 2),
+            "description": description,
+            "links": {
+                "devpost": devpost_data['url'],
+                "github": github_url
+            },
+            "findings": {
+                "tech_stack": {
+                    "found": report.tech_found,
+                    "missing": report.tech_missing
+                },
+                "team": {
+                    "matched": report.team_matched,
+                    "unmatched": report.team_unmatched,
+                    "unauthorized": report.unauthorized_contributors
+                },
+                "core_logic": {
+                    "status": report.core_logic_status,
+                    "reasoning": report.core_logic_reasoning
+                },
+                "timeline": {
+                    "commits_in": report.commits_in_timeframe,
+                    "suspect_commits": report.commits_outside_timeframe,
+                    "first": report.first_commit,
+                    "last": report.last_commit
+                }
+            },
+            "validation_flags": report.flags,
+            "api_usage": report.api_calls_used
         }
     
     def _generate_description(self, report, claims) -> str:
@@ -209,6 +271,15 @@ class ValidationPipeline:
         lines.append(f"⏰ **Timeline:** {report.commits_in_timeframe}/{total} commits during hackathon")
         
         lines.append("")
+        
+        # Core Logic Verification (NEW)
+        if report.core_logic_status != "SKIPPED":
+            logic_emoji = {"VERIFIED": "✅", "UNVERIFIED": "⚠️", "CONTRADICTED": "❌"}.get(report.core_logic_status, "❓")
+            lines.append(f"🔍 **Core Logic Verification:** {logic_emoji} {report.core_logic_status}")
+            if report.core_logic_reasoning:
+                lines.append(f"   _{report.core_logic_reasoning}_")
+            lines.append("")
+            
         lines.append(f"📊 **API Calls Used:** {report.api_calls_used}")
         
         return "\n".join(lines)
@@ -217,23 +288,26 @@ class ValidationPipeline:
         """Generate 1-2 sentence concise reasoning for the validation decision."""
         status = report.status
         
+        # DISQUALIFIED: ONLY for pre-start commits
+        if status == "DISQUALIFIED":
+            if any("BEFORE" in f for f in report.flags):
+                return f"Disqualified: Found {report.commits_outside_timeframe} commits made BEFORE the hackathon started (Hard rule violation)."
+            # Fallback (should never happen with new logic)
+            return "Disqualified: Project failed timeline eligibility checks."
+            
         if status == "VERIFIED":
             if report.flags:
-                # Still verified, but noting minor flags (like Leeway or minor tech)
+                # Still verified, but noting minor flags (like Leeway)
                 return f"Project verified with {report.confidence:.0%} confidence. Core requirements met (minor notes: {'; '.join(report.flags)})."
             return f"Project verified with {report.confidence:.0%} confidence. All technologies found and commits started after the hackathon began."
         
-        elif status == "DISQUALIFIED":
-            if report.commits_in_timeframe == 0:
-                return "Disqualified: No work found within the hackathon timeframe."
-            if any("BEFORE" in f for f in report.flags):
-                return f"Disqualified: Found {report.commits_outside_timeframe} commits made before the hackathon started (Violation of core timeline rule)."
-            return "Disqualified: Project failed basic eligibility checks."
-            
         else: # FLAGGED
             core_missing = [t['name'] for t in claims['tech_stack'] if t['name'] in report.tech_missing and t['weight'] >= 1.0]
             if core_missing:
                 return f"Flagged: Missing {len(core_missing)} CORE technologies ({', '.join(core_missing)}). Manual review required."
+            
+            if len(report.unauthorized_contributors) > 0:
+                return f"Flagged: Found {len(report.unauthorized_contributors)} unauthorized contributor(s). Manual review required."
             
             # This should rarely happen with the new GitHubValidator logic
             if report.flags:
@@ -244,7 +318,6 @@ class ValidationPipeline:
         self,
         devpost_url: str,
         hackathon_url: str,
-        org_id: str = None,
         save_artifacts: bool = False
     ) -> dict:
         """
@@ -270,7 +343,7 @@ class ValidationPipeline:
         
         if 'error' in devpost_data:
             return {
-                "final_status": "ERROR",
+                "status": "ERROR",
                 "error": f"Failed to scrape Devpost: {devpost_data['error']}",
                 "project_url": devpost_url,
                 "project_title": "Scrape Error",
@@ -285,7 +358,7 @@ class ValidationPipeline:
         
         if not schedule:
             return {
-                "final_status": "ERROR",
+                "status": "ERROR",
                 "error": "Failed to fetch hackathon schedule",
                 "project_title": devpost_data['title'],
                 "description": "❌ Could not determine hackathon dates"
@@ -294,19 +367,22 @@ class ValidationPipeline:
         start_time, end_time = self._extract_hackathon_dates(schedule)
         devpost_data['start_time'] = start_time
         devpost_data['end_time'] = end_time
-        print(f"   ✓ Hackathon period: {start_time} to {end_time}\n")
+        print(f"   ✓ Hackathon period: {start_time} to {end_time}")
+        
+        # Step 0c: Get official hackathon name
+        hackathon_name = scraper.scrape_hackathon_name(hackathon_url)
+        devpost_data['hackathon'] = hackathon_name
+        print(f"   ✓ Hackathon Name: {hackathon_name}\n")
         
         # Step 1-2: Validate using existing pipeline
         result = self.validate_project(devpost_data)
         
-        # Step 3: Save to Supabase (if org_id provided)
-        if org_id:
-            self.save_to_supabase(
-                org_id=org_id,
-                hackathon_url=hackathon_url,
-                devpost_data=devpost_data,
-                result=result
-            )
+        # Step 3: Save to Supabase
+        self.save_to_supabase(
+            hackathon_url=hackathon_url,
+            devpost_data=devpost_data,
+            result=result
+        )
         
         # Optional: Save artifacts for debugging
         if save_artifacts:
@@ -350,7 +426,6 @@ class ValidationPipeline:
     def validate_hackathon(
         self,
         hackathon_url: str,
-        org_id: str = None,
         max_projects: int = None,
         delay_seconds: float = 4.0,
         save_artifacts: bool = False
@@ -373,31 +448,52 @@ class ValidationPipeline:
         print(f"🎯 BATCH VALIDATION: {hackathon_url}")
         print(f"{'='*70}\n")
         
-        # Step 1: Get all project URLs from gallery
+        # Step 1: Get project URLs from gallery (fetch extra to account for potential skips)
         scraper = DevpostScraper()
         print(f"📥 Fetching project gallery...")
-        project_urls = scraper.scrape_hackathon_gallery(hackathon_url, max_projects)
+        # Fetch up to 2x requested projects to ensure we can hit the target even with errors
+        fetch_limit = max_projects * 2 if max_projects else None
+        project_urls = scraper.scrape_hackathon_gallery(hackathon_url, fetch_limit)
         
         if not project_urls:
             print("❌ No projects found in gallery")
             return []
         
-        print(f"✓ Found {len(project_urls)} project(s) to validate\n")
+        # Step 2: Get hackathon name and dates once
+        print(f"📅 Fetching hackathon info: {hackathon_url}")
+        hackathon_name = scraper.scrape_hackathon_name(hackathon_url)
+        schedule = scraper.scrape_hackathon_schedule(hackathon_url)
+        print(f"   ✓ Name: {hackathon_name}")
         
-        # Step 2: Validate each project
+        # Step 3: Validate each project
         results = []
+        skipped_count = 0
+        target_count = max_projects or len(project_urls)
+        
         for i, project_url in enumerate(project_urls, 1):
+            # STOP if we've reached the user's requested count of SUCCESSFUL validations
+            if len(results) >= target_count:
+                break
+                
+            project_num = len(results) + 1  # Dynamic numbering based on successful validations
             print(f"\n{'─'*70}")
-            print(f"Project {i}/{len(project_urls)}")
+            print(f"Project {project_num}/{target_count}")
             print(f"{'─'*70}")
             
             try:
                 result = self.validate_from_url(
                     devpost_url=project_url,
                     hackathon_url=hackathon_url,
-                    org_id=org_id,
                     save_artifacts=save_artifacts
                 )
+                
+                # Check for "ERROR" status in result (means technical failure like scrape fail)
+                if result.get('status') == 'ERROR':
+                    print(f"\n⚠️ Technical Error: {result.get('error', 'Unknown error')}")
+                    print(f"   Skipping project and continuing to next to hit target...")
+                    continue
+
+                result['hackathon_name'] = hackathon_name
                 results.append(result)
                 
                 # Summary
@@ -406,18 +502,15 @@ class ValidationPipeline:
                     "FLAGGED": "🚩",
                     "DISQUALIFIED": "❌",
                     "ERROR": "⚠️"
-                }.get(result.get('final_status', 'ERROR'), "❓")
+                }.get(result.get('status', 'ERROR'), "❓")
                 
-                print(f"\n{status_emoji} {result.get('project_title', 'Unknown')}: {result.get('final_status', 'ERROR')}")
+                print(f"\n{status_emoji} {result.get('project_title', 'Unknown')}: {result.get('status', 'ERROR')}")
                 print(f"   Reason: {result.get('reasoning', 'No reasoning provided.')}")
                 
             except Exception as e:
-                print(f"❌ Validation failed: {str(e)}")
-                results.append({
-                    "project_url": project_url,
-                    "status": "ERROR",
-                    "error": str(e)
-                })
+                print(f"\n⚠️ Unexpected Exception: {str(e)}")
+                print(f"   Skipping project and continuing to next to hit target...")
+                # Don't add to results - just skip it
             
             # Rate limiting delay (except for last project)
             if i < len(project_urls):
@@ -429,19 +522,20 @@ class ValidationPipeline:
         print(f"📊 BATCH COMPLETE: {len(results)} projects processed")
         print(f"{'='*70}")
         
-        verified = sum(1 for r in results if r.get('final_status') == 'VERIFIED')
-        flagged = sum(1 for r in results if r.get('final_status') == 'FLAGGED')
-        disqualified = sum(1 for r in results if r.get('final_status') == 'DISQUALIFIED')
-        errors = sum(1 for r in results if r.get('final_status') == 'ERROR')
+        verified = sum(1 for r in results if r.get('status') == 'VERIFIED')
+        flagged = sum(1 for r in results if r.get('status') == 'FLAGGED')
+        disqualified = sum(1 for r in results if r.get('status') == 'DISQUALIFIED')
+        skipped = len(project_urls) - len(results)
         
         print(f"✅ Verified: {verified}")
         print(f"🚩 Flagged: {flagged}")
         print(f"❌ Disqualified: {disqualified}")
-        print(f"⚠️  Errors: {errors}")
+        if skipped > 0:
+            print(f"⏭️  Skipped: {skipped}")
         print(f"{'='*70}\n")
         
         return results
-    
+        
     def validate_batch(self, devpost_projects: list) -> list:
         """
         Validate multiple projects at once.

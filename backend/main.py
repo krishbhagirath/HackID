@@ -40,11 +40,9 @@ pipeline = ValidationPipeline(google_api_key=google_api_key, github_token=github
 class ValidationRequest(BaseModel):
     devpost_url: str
     hackathon_url: str
-    org_id: Optional[str] = None # Optional: if not provided, won't save to DB
 
 class BatchValidationRequest(BaseModel):
     hackathon_url: str
-    org_id: str # Required for batch validation to group results
     max_projects: Optional[int] = 10
 
 @app.get("/")
@@ -55,13 +53,12 @@ async def root():
 async def validate_project(request: ValidationRequest):
     """
     Endpoint to validate a single project from Devpost and GitHub.
-    Saves to Supabase if org_id is provided.
+    Automatically saves results to Supabase.
     """
     try:
         result = pipeline.validate_from_url(
             devpost_url=request.devpost_url,
-            hackathon_url=request.hackathon_url,
-            org_id=request.org_id
+            hackathon_url=request.hackathon_url
         )
         return result
     except Exception as e:
@@ -71,18 +68,16 @@ async def validate_project(request: ValidationRequest):
 async def validate_batch(request: BatchValidationRequest):
     """
     Scrape a hackathon gallery and validate multiple projects.
-    Saves results to Supabase under the provided org_id.
+    Automatically saves results to Supabase.
     """
     try:
         results = pipeline.validate_hackathon(
             hackathon_url=request.hackathon_url,
-            org_id=request.org_id,
             max_projects=request.max_projects,
             delay_seconds=2.0 
         )
         return {
             "hackathon_url": request.hackathon_url,
-            "org_id": request.org_id,
             "projects_processed": len(results),
             "results": results
         }
