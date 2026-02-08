@@ -2,45 +2,51 @@ import { Suspense } from "react";
 import AuthStatus from "./AuthStatus";
 
 interface HeaderServerProps {
-    children?: React.ReactNode;
+    isDark: boolean;
+    toggleTheme: () => void;
 }
 
-/**
- * Server Header Wrapper
- * Integrates authentication status into the header layout
- */
-export default function HeaderServer({ children }: HeaderServerProps) {
+function HeaderSkeleton() {
     return (
-        <header className="border-b-4 border-brutal-black dark:border-white p-6 sticky top-0 bg-background-light dark:bg-background-dark z-50">
-            <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-                {/* Logo Section */}
-                <div className="flex items-center gap-4">
-                    <div className="bg-primary p-3 brutal-border brutal-shadow">
-                        <span className="material-icons text-black text-3xl font-bold">security</span>
-                    </div>
-                    <div>
-                        <h1 className="font-display text-2xl md:text-3xl uppercase leading-none">HackCheck_v1.0</h1>
-                        <p className="text-xs font-bold opacity-70 uppercase tracking-widest">Plagiarism Detection Engine</p>
-                    </div>
+        <div className="bg-zinc-800 brutal-border px-3 py-2 animate-pulse">
+            <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-zinc-700" />
+                <div className="hidden sm:block">
+                    <div className="h-4 w-24 bg-zinc-700 rounded mb-1" />
+                    <div className="h-3 w-16 bg-zinc-700 rounded" />
                 </div>
+            </div>
+        </div>
+    );
+}
 
-                {/* Right Section */}
-                <div className="flex items-center gap-6">
-                    <div className="hidden md:flex flex-col items-end">
-                        <span className="text-xs uppercase font-bold">Status: Online</span>
-                        <span className="text-xs uppercase font-bold text-brutal-green">Engine: Active</span>
-                    </div>
-
-                    {/* Theme toggle passed as children */}
-                    {children}
-
-                    {/* Auth Status */}
-                    <Suspense fallback={
-                        <div className="w-10 h-10 brutal-border bg-zinc-800 animate-pulse" />
-                    }>
-                        <AuthStatus />
-                    </Suspense>
+export default function HeaderServer({ isDark, toggleTheme }: HeaderServerProps) {
+    return (
+        <header className="brutal-border bg-zinc-900 p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-6">
+                <h1 className="font-display text-3xl md:text-4xl font-black uppercase italic tracking-tighter text-white">
+                    HACKCHECK<span className="text-primary">_</span>
+                </h1>
+                <div className="hidden md:flex items-center gap-2 bg-green-500/20 border-2 border-green-500 px-3 py-1">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-green-400 font-bold text-xs uppercase">System Online</span>
                 </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={toggleTheme}
+                    className="brutal-border p-2 hover:bg-zinc-800 transition-colors"
+                    aria-label="Toggle theme"
+                >
+                    <span className="material-icons">
+                        {isDark ? "light_mode" : "dark_mode"}
+                    </span>
+                </button>
+
+                <Suspense fallback={<HeaderSkeleton />}>
+                    <AuthStatus />
+                </Suspense>
             </div>
         </header>
     );

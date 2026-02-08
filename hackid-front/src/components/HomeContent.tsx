@@ -1,22 +1,35 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import Header from '~/components/Header';
 import Sidebar from '~/components/Sidebar';
 import ProjectCard from '~/components/ProjectCard';
 import { type ProjectResult, Verdict, type Stats } from '~/types';
 import { INITIAL_PROJECTS } from '~/constants';
 
-export default function HomeContent() {
+interface HomeContentProps {
+    user?: {
+        name?: string | null;
+        email?: string | null;
+        picture?: string | null;
+    } | null;
+}
+
+export default function HomeContent({ user }: HomeContentProps) {
+    const [isDark, setIsDark] = useState(true);
     const [url, setUrl] = useState('');
     const [isScanning, setIsScanning] = useState(false);
     const [projects, setProjects] = useState<ProjectResult[]>(INITIAL_PROJECTS);
     const [activeVerdict, setActiveVerdict] = useState<Verdict | 'ALL'>('ALL');
     const [minScore, setMinScore] = useState(0);
 
+    const toggleTheme = () => {
+        setIsDark(prev => !prev);
+    };
+
     const handleScan = () => {
         if (!url) return;
         setIsScanning(true);
-        // Simulate a local "index" scan delay without AI
         setTimeout(() => {
             setProjects(INITIAL_PROJECTS);
             setIsScanning(false);
@@ -43,7 +56,9 @@ export default function HomeContent() {
     }, [projects]);
 
     return (
-        <>
+        <div className={`min-h-screen ${isDark ? 'dark' : ''}`}>
+            <Header isDark={isDark} toggleTheme={toggleTheme} user={user} />
+
             <main className="max-w-[1400px] mx-auto p-6 flex flex-col lg:flex-row gap-8">
                 <Sidebar
                     url={url}
@@ -121,6 +136,6 @@ export default function HomeContent() {
                     </div>
                 </div>
             </footer>
-        </>
+        </div>
     );
 }

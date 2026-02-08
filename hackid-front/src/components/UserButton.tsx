@@ -1,23 +1,25 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React, { useState } from "react";
 
 interface UserButtonProps {
     user: {
-        name?: string;
-        email?: string;
-        picture?: string;
+        name?: string | null;
+        email?: string | null;
+        picture?: string | null;
     } | null;
-    isVerified?: boolean;
-    roleName?: string;
+    isVerified: boolean;
+    role: string;
 }
 
-export default function UserButton({ user, isVerified, roleName }: UserButtonProps) {
+export default function UserButton({ user, isVerified, role }: UserButtonProps) {
+    const [isOpen, setIsOpen] = useState(false);
+
     if (!user) {
         return (
             <a
                 href="/auth/login"
-                className="brutal-border px-4 py-2 bg-primary text-black font-bold text-sm uppercase hover:bg-yellow-400 transition-colors brutal-shadow hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                className="bg-primary text-black font-bold py-2 px-6 brutal-border brutal-shadow hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all uppercase text-sm"
             >
                 Login
             </a>
@@ -25,61 +27,59 @@ export default function UserButton({ user, isVerified, roleName }: UserButtonPro
     }
 
     return (
-        <div className="flex items-center gap-3">
-            {/* User Info */}
-            <div className="hidden md:flex flex-col items-end">
-                <span className="text-xs uppercase font-bold truncate max-w-[150px]">
-                    {user.name || user.email}
-                </span>
-                <span className={`text-xs uppercase font-bold ${isVerified ? 'text-brutal-green' : 'text-brutal-red'}`}>
-                    {roleName || (isVerified ? 'Verified' : 'Guest')}
-                </span>
-            </div>
-
-            {/* Avatar */}
-            <div className="relative group">
-                <div className="w-10 h-10 brutal-border overflow-hidden bg-zinc-800">
-                    {user.picture ? (
-                        <img
-                            src={user.picture}
-                            alt={user.name || 'User'}
-                            className="w-full h-full object-cover"
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-primary text-black font-bold">
-                            {(user.name || user.email || 'U')[0]?.toUpperCase()}
-                        </div>
-                    )}
-                </div>
-
-                {/* Dropdown Menu */}
-                <div className="absolute right-0 top-full mt-2 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                    <div className="brutal-border bg-zinc-900 brutal-shadow">
-                        <div className="p-3 border-b-2 border-white/20">
-                            <p className="text-xs font-bold uppercase truncate">{user.email}</p>
-                            <p className={`text-xs mt-1 ${isVerified ? 'text-brutal-green' : 'text-brutal-red'}`}>
-                                {isVerified ? '✓ VERIFIED ORGANIZER' : '✗ NOT VERIFIED'}
-                            </p>
-                        </div>
-
-                        {isVerified && (
-                            <a
-                                href="/dashboard"
-                                className="block px-3 py-2 text-xs font-bold uppercase hover:bg-primary hover:text-black transition-colors"
-                            >
-                                Dashboard
-                            </a>
-                        )}
-
-                        <a
-                            href="/auth/logout"
-                            className="block px-3 py-2 text-xs font-bold uppercase text-brutal-red hover:bg-brutal-red hover:text-white transition-colors"
-                        >
-                            Logout
-                        </a>
+        <div className="relative">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-3 bg-zinc-800 brutal-border px-3 py-2 hover:bg-zinc-700 transition-colors"
+            >
+                {user.picture ? (
+                    <img
+                        src={user.picture}
+                        alt={user.name || "User"}
+                        className="w-8 h-8 rounded-full border-2 border-white"
+                    />
+                ) : (
+                    <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-black font-bold">
+                        {user.name?.charAt(0) || "U"}
+                    </div>
+                )}
+                <div className="text-left hidden sm:block">
+                    <div className="text-sm font-bold truncate max-w-[120px]">
+                        {user.name || user.email}
+                    </div>
+                    <div className={`text-xs uppercase ${isVerified ? "text-green-400" : "text-red-400"}`}>
+                        {role}
                     </div>
                 </div>
-            </div>
+                <span className="material-icons text-sm">
+                    {isOpen ? "expand_less" : "expand_more"}
+                </span>
+            </button>
+
+            {isOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-zinc-900 brutal-border brutal-shadow z-50">
+                    <div className="p-3 border-b-2 border-black">
+                        <div className="text-sm font-bold truncate">{user.email}</div>
+                        <div className={`text-xs uppercase mt-1 ${isVerified ? "text-green-400" : "text-red-400"}`}>
+                            {isVerified ? "✓ Verified" : "✗ Unverified"}
+                        </div>
+                    </div>
+                    <a
+                        href="/dashboard"
+                        className="block px-3 py-2 text-sm hover:bg-zinc-800 transition-colors"
+                    >
+                        <span className="material-icons text-sm mr-2 align-middle">dashboard</span>
+                        Dashboard
+                    </a>
+                    <a
+                        href="/auth/logout"
+                        className="block px-3 py-2 text-sm hover:bg-zinc-800 transition-colors text-red-400"
+                    >
+                        <span className="material-icons text-sm mr-2 align-middle">logout</span>
+                        Logout
+                    </a>
+                </div>
+            )}
         </div>
     );
 }

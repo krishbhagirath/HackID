@@ -1,154 +1,122 @@
 /**
- * Domain-Based Verification for Organizers
- * 
- * This utility checks if a user's email belongs to a known organization.
- * Only users from approved domains can access organizer features.
+ * Domain Verification Utility
+ * Validates organizer domains for hackathon access
  */
 
-// Approved email domains for organizers
-const APPROVED_DOMAINS: string[] = [
-    // MLH (Major League Hacking)
+// Approved exact domains
+const APPROVED_DOMAINS = [
+    // MLH
     "mlh.io",
     "majorleaguehacking.com",
 
-    // Universities (Add your target universities here)
-    ".edu",           // All US educational institutions
-    ".edu.ca",        // Canadian educational institutions
-    ".ac.uk",         // UK academic institutions
-    ".edu.au",        // Australian educational institutions
-    "uwaterloo.ca",   // University of Waterloo
-    "utoronto.ca",    // University of Toronto
-    "mcmaster.ca",    // McMaster University
-    "uoft.ca",        // University of Toronto alternate
-    "mit.edu",
-    "stanford.edu",
-    "berkeley.edu",
-    "harvard.edu",
-    "princeton.edu",
-    "cmu.edu",
-
-    // Major Tech Companies (Hackathon Sponsors)
-    "google.com",
+    // Tech Companies
     "microsoft.com",
+    "github.com",
+    "shopify.com",
     "amazon.com",
+    "google.com",
+    "stripe.com",
+    "vercel.com",
     "meta.com",
     "apple.com",
-    "netflix.com",
-    "github.com",
-    "stripe.com",
-    "shopify.com",
-    "mongodb.com",
-    "twilio.com",
-    "digitalocean.com",
-    "vercel.com",
-    "cloudflare.com",
-    "auth0.com",
 
-    // Hackathon Organizations
+    // Hackathon Platforms
     "devpost.com",
     "hackerearth.com",
-    "hackclub.com",
 ];
 
-export type VerificationResult = {
+// Canadian University Domains
+const CANADIAN_UNIVERSITIES = [
+    "mcmaster.ca",
+    "uwaterloo.ca",
+    "utoronto.ca",
+    "yorku.ca",
+    "ubc.ca",
+    "ualberta.ca",
+    "queensu.ca",
+    "uottawa.ca",
+    "mcgill.ca",
+    "dal.ca",
+    "carleton.ca",
+    "wlu.ca",
+    "torontomu.ca",
+    "uwo.ca",
+    "sfu.ca",
+    "usask.ca",
+    "umanitoba.ca",
+    "mun.ca",
+];
+
+// Educational domain suffixes
+const EDU_SUFFIXES = [
+    ".edu",      // US Universities
+    ".edu.ca",   // Canadian (some)
+    ".ac.uk",    // UK
+    ".edu.au",   // Australia
+    ".ac.jp",    // Japan
+    ".edu.sg",   // Singapore
+];
+
+export type OrganizationType = "MLH" | "UNIVERSITY" | "COMPANY" | "HACKATHON_PLATFORM" | "UNKNOWN";
+
+export interface VerificationResult {
     isVerified: boolean;
-    domain: string | null;
-    matchedPattern: string | null;
-    organizationType: "mlh" | "university" | "company" | null;
-};
-
-/**
- * Extract domain from email address
- */
-export function extractDomain(email: string): string | null {
-    if (!email || !email.includes("@")) {
-        return null;
-    }
-    return email.split("@")[1]?.toLowerCase() || null;
+    domain: string;
+    organizationType: OrganizationType;
 }
 
 /**
- * Determine the organization type based on the matched domain
- */
-function getOrganizationType(matchedPattern: string): "mlh" | "university" | "company" {
-    // MLH domains
-    if (matchedPattern.includes("mlh") || matchedPattern.includes("majorleaguehacking")) {
-        return "mlh";
-    }
-
-    // Educational domains
-    if (
-        matchedPattern.includes(".edu") ||
-        matchedPattern.includes(".ac.") ||
-        matchedPattern.endsWith(".ca") && !matchedPattern.includes(".")
-    ) {
-        return "university";
-    }
-
-    return "company";
-}
-
-/**
- * Check if an email domain matches any approved pattern
+ * Verify if an email belongs to an approved organizer domain
  */
 export function verifyOrganizerDomain(email: string): VerificationResult {
-    const domain = extractDomain(email);
+    const domain = email.split("@")[1]?.toLowerCase() || "";
 
-    if (!domain) {
-        return {
-            isVerified: false,
-            domain: null,
-            matchedPattern: null,
-            organizationType: null,
-        };
+    // Check MLH
+    if (domain === "mlh.io" || domain === "majorleaguehacking.com") {
+        return { isVerified: true, domain, organizationType: "MLH" };
     }
 
-    for (const pattern of APPROVED_DOMAINS) {
-        // Exact match
-        if (domain === pattern) {
-            return {
-                isVerified: true,
-                domain,
-                matchedPattern: pattern,
-                organizationType: getOrganizationType(pattern),
-            };
-        }
+    // Check hackathon platforms
+    if (domain === "devpost.com" || domain === "hackerearth.com") {
+        return { isVerified: true, domain, organizationType: "HACKATHON_PLATFORM" };
+    }
 
-        // Suffix match (e.g., ".edu" matches "student@harvard.edu")
-        if (pattern.startsWith(".") && domain.endsWith(pattern)) {
-            return {
-                isVerified: true,
-                domain,
-                matchedPattern: pattern,
-                organizationType: getOrganizationType(pattern),
-            };
+    // Check exact approved domains (companies)
+    if (APPROVED_DOMAINS.includes(domain)) {
+        return { isVerified: true, domain, organizationType: "COMPANY" };
+    }
+
+    // Check Canadian universities (including subdomains like macid.mcmaster.ca)
+    for (const uni of CANADIAN_UNIVERSITIES) {
+        if (domain === uni || domain.endsWith("." + uni)) {
+            return { isVerified: true, domain, organizationType: "UNIVERSITY" };
         }
     }
 
-    return {
-        isVerified: false,
-        domain,
-        matchedPattern: null,
-        organizationType: null,
-    };
+    // Check educational suffixes
+    for (const suffix of EDU_SUFFIXES) {
+        if (domain.endsWith(suffix)) {
+            return { isVerified: true, domain, organizationType: "UNIVERSITY" };
+        }
+    }
+
+    return { isVerified: false, domain, organizationType: "UNKNOWN" };
 }
 
 /**
  * Get a user-friendly role name based on verification result
  */
 export function getRoleName(result: VerificationResult): string {
-    if (!result.isVerified) {
-        return "Guest";
-    }
-
     switch (result.organizationType) {
-        case "mlh":
+        case "MLH":
             return "MLH Staff";
-        case "university":
+        case "UNIVERSITY":
             return "University Organizer";
-        case "company":
+        case "COMPANY":
             return "Sponsor";
+        case "HACKATHON_PLATFORM":
+            return "Platform Partner";
         default:
-            return "Verified Organizer";
+            return "Guest";
     }
 }

@@ -2,7 +2,6 @@ import "~/styles/globals.css";
 
 import { type Metadata } from "next";
 import { Syne, Space_Mono } from "next/font/google";
-import HeaderServer from "~/components/HeaderServer";
 
 const syne = Syne({
   subsets: ["latin"],
@@ -39,4 +38,3 @@ export default function RootLayout({
     </html>
   );
 }
-
