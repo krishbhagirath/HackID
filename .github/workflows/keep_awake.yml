@@ -1,0 +1,14 @@
+name: Keep Backend Awake
+on:
+  schedule:
+    - cron: '*/14 * * * *' # Runs every 14 minutes
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render
+        run: |
+          # Replace the URL below with your actual Render URL
+          curl -I https://hackid-backend.onrender.com/
