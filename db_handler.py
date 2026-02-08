@@ -2,188 +2,137 @@
 import os
 import json
 import glob
-import psycopg2
-from psycopg2.extras import Json
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, String, DateTime, text, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.sql import func
 
 # Load environment variables
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL is not set in .env file")
 
-# Define default IDs for organization and event since they are required by the schema
-# In a real application, these would come from your application logic/context
+# Setup SQLAlchemy
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# --- Database Models ---
+
+class Submission(Base):
+    __tablename__ = 'submissions'
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id = Column(String, nullable=False)
+    event_id = Column(String, nullable=False)
+    source = Column(String, nullable=False)
+    source_url = Column(String, nullable=False, unique=True)
+    title = Column(String)
+    tagline = Column(String)
+    github_repo = Column(String)
+    hackathon = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    raw_data = relationship("RawSubmission", back_populates="submission", uselist=False)
+    text_sections = relationship("SubmissionText", back_populates="submission", cascade="all, delete-orphan")
+
+class RawSubmission(Base):
+    __tablename__ = 'raw_submissions'
+    
+    submission_id = Column(UUID(as_uuid=True), ForeignKey('submissions.id'), primary_key=True)
+    raw_json = Column(JSONB, nullable=False)
+    scraped_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    submission = relationship("Submission", back_populates="raw_data")
+
+class SubmissionText(Base):
+    __tablename__ = 'submission_text'
+    
+    submission_id = Column(UUID(as_uuid=True), ForeignKey('submissions.id'), primary_key=True)
+    section_key = Column(String, primary_key=True)
+    section_text = Column(String, nullable=False)
+    
+    submission = relationship("Submission", back_populates="text_sections")
+
+# --- Logic ---
+
 DEFAULT_ORG_ID = "default-org"
 DEFAULT_EVENT_ID = "hackathon-event"
 
-def get_db_connection():
-    """Establish a connection to the database."""
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL is not set in .env file")
-    return psycopg2.connect(DATABASE_URL)
-
-def init_db():
-    """Initialize the database schema."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    try:
-        print("Initializing database schema...")
-        
-        # 0. Enable pgcrypto extension for gen_random_uuid()
-        cur.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto";')
-        
-        # 1. Create submissions table (must be first as others reference it)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.submissions (
-          id uuid NOT NULL DEFAULT gen_random_uuid(),
-          org_id text NOT NULL,
-          event_id text NOT NULL,
-          source text NOT NULL,
-          source_url text NOT NULL UNIQUE,
-          title text,
-          tagline text,
-          github_repo text,
-          hackathon text,
-          created_at timestamp with time zone DEFAULT now(),
-          updated_at timestamp with time zone DEFAULT now(),
-          CONSTRAINT submissions_pkey PRIMARY KEY (id)
-        );
-        """)
-        
-        # 2. Create raw_submissions table
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.raw_submissions (
-          submission_id uuid NOT NULL,
-          raw_json jsonb NOT NULL,
-          scraped_at timestamp with time zone DEFAULT now(),
-          CONSTRAINT raw_submissions_pkey PRIMARY KEY (submission_id),
-          CONSTRAINT raw_submissions_submission_id_fkey FOREIGN KEY (submission_id) REFERENCES public.submissions(id)
-        );
-        """)
-        
-        # 3. Create submission_text table
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.submission_text (
-          submission_id uuid NOT NULL,
-          section_key text NOT NULL,
-          section_text text NOT NULL,
-          CONSTRAINT submission_text_pkey PRIMARY KEY (submission_id, section_key),
-          CONSTRAINT submission_text_submission_id_fkey FOREIGN KEY (submission_id) REFERENCES public.submissions(id)
-        );
-        """)
-        
-        # 4. Create analysis_results table
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS public.analysis_results (
-          id uuid NOT NULL DEFAULT gen_random_uuid(),
-          org_id text NOT NULL,
-          event_id text NOT NULL,
-          submission_id_a uuid,
-          submission_id_b uuid,
-          method text NOT NULL,
-          version text NOT NULL,
-          score numeric NOT NULL,
-          severity text,
-          explanation text,
-          created_at timestamp with time zone DEFAULT now(),
-          CONSTRAINT analysis_results_pkey PRIMARY KEY (id),
-          CONSTRAINT analysis_results_submission_id_a_fkey FOREIGN KEY (submission_id_a) REFERENCES public.submissions(id),
-          CONSTRAINT analysis_results_submission_id_b_fkey FOREIGN KEY (submission_id_b) REFERENCES public.submissions(id)
-        );
-        """)
-        
-        conn.commit()
-        print("✓ Database schema initialized successfully.")
-        
-    except Exception as e:
-        conn.rollback()
-        print(f"❌ Error initializing database: {e}")
-        raise e
-    finally:
-        cur.close()
-        conn.close()
-
 def save_project_to_db(data, org_id=DEFAULT_ORG_ID, event_id=DEFAULT_EVENT_ID):
     """
-    Save a single project dictionary to the database.
+    Save a single project dictionary to the database using SQLAlchemy.
     Updates existing records if source_url matches.
     """
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
+    session = SessionLocal()
     try:
-        # 1. Insert or Update into submissions
-        # We check for existing URL to handle upserts
-        cur.execute("SELECT id FROM submissions WHERE source_url = %s", (data['url'],))
-        existing = cur.fetchone()
+        source_url = data['url']
         
-        submission_id = None
+        # 1. Check for existing submission
+        submission = session.query(Submission).filter(Submission.source_url == source_url).first()
         
-        if existing:
-            submission_id = existing[0]
-            # Update the existing record
-            cur.execute("""
-                UPDATE submissions 
-                SET title = %s, tagline = %s, github_repo = %s, hackathon = %s, updated_at = NOW()
-                WHERE id = %s
-            """, (
-                data.get('title'),
-                data.get('tagline'),
-                data.get('github_repo'),
-                data.get('hackathon'),
-                submission_id
-            ))
+        if submission:
+            # Update existing
+            submission.title = data.get('title')
+            submission.tagline = data.get('tagline')
+            submission.github_repo = data.get('github_repo')
+            submission.hackathon = data.get('hackathon')
+            # updated_at will handle itself via onupdate or we can force it
+            # submission.updated_at = func.now() 
         else:
-            # Insert new record
-            cur.execute("""
-                INSERT INTO submissions (org_id, event_id, source, source_url, title, tagline, github_repo, hackathon)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                org_id,
-                event_id,
-                'devpost',
-                data['url'],
-                data.get('title'),
-                data.get('tagline'),
-                data.get('github_repo'),
-                data.get('hackathon')
-            ))
-            submission_id = cur.fetchone()[0]
+            # Create new
+            submission = Submission(
+                org_id=org_id,
+                event_id=event_id,
+                source='devpost',
+                source_url=source_url,
+                title=data.get('title'),
+                tagline=data.get('tagline'),
+                github_repo=data.get('github_repo'),
+                hackathon=data.get('hackathon')
+            )
+            session.add(submission)
+            session.flush() # Flush to generate the ID for new records
+
+        # 2. Update/Insert Raw Data
+        if submission.raw_data:
+            submission.raw_data.raw_json = data
+            submission.raw_data.scraped_at = func.now()
+        else:
+            raw_node = RawSubmission(
+                submission_id=submission.id, 
+                raw_json=data
+            )
+            session.add(raw_node)
             
-        # 2. Save raw JSON to raw_submissions
-        # Upsert logic for raw_submissions
-        cur.execute("""
-            INSERT INTO raw_submissions (submission_id, raw_json)
-            VALUES (%s, %s)
-            ON CONFLICT (submission_id) 
-            DO UPDATE SET raw_json = EXCLUDED.raw_json, scraped_at = NOW()
-        """, (submission_id, Json(data)))
-        
-        # 3. Save text sections to submission_text
-        # First, clear existing sections for this submission to avoid duplicates/stale data
-        cur.execute("DELETE FROM submission_text WHERE submission_id = %s", (submission_id,))
+        # 3. Update Text Sections
+        # Easiest way with ORM: Clear list and re-add. 
+        # cascade="all, delete-orphan" on the relationship handles the DELETE.
+        submission.text_sections = [] 
         
         story = data.get('story', {})
         for section_key, section_text in story.items():
             if section_key and section_text:
-                # Truncate section_key if needed (unlikely based on text type)
-                cur.execute("""
-                    INSERT INTO submission_text (submission_id, section_key, section_text)
-                    VALUES (%s, %s, %s)
-                """, (submission_id, section_key, section_text))
-        
-        conn.commit()
-        return submission_id, True
+                text_node = SubmissionText(
+                    section_key=section_key,
+                    section_text=section_text
+                )
+                submission.text_sections.append(text_node)
+
+        session.commit()
+        return submission.id, True
 
     except Exception as e:
-        conn.rollback()
-        print(f"❌ Error saving project '{data.get('title', 'Unknown')}': {e}")
+        session.rollback()
+        print(f"[ERROR] Saving project '{data.get('title', 'Unknown')}': {e}")
         return None, False
     finally:
-        cur.close()
-        conn.close()
+        session.close()
 
 def process_output_folder(folder_path="output"):
     """
@@ -200,7 +149,6 @@ def process_output_folder(folder_path="output"):
                 data = json.load(f)
                 
             projects = data.get('projects', [])
-            # Use the hackathon URL as event_id if present
             event_id = data.get('hackathon_url', DEFAULT_EVENT_ID)
             
             print(f"Found {len(projects)} projects to import.")
@@ -210,7 +158,7 @@ def process_output_folder(folder_path="output"):
                 _, success = save_project_to_db(project, event_id=event_id)
                 if success:
                     success_count += 1
-                    print(f"✓ Saved: {project.get('title')}")
+                    print(f"[OK] Saved: {project.get('title')}")
             
             print(f"\nImport complete. Successfully saved {success_count}/{len(projects)} projects.")
             return
@@ -231,18 +179,15 @@ def process_output_folder(folder_path="output"):
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 
-            # Basic validation to ensure it's a project file
             if 'url' in data and 'title' in data:
                 _, success = save_project_to_db(data)
                 if success:
                     success_count += 1
-                    print(f"✓ Saved: {data.get('title')} (from {os.path.basename(file_path)})")
+                    print(f"[OK] Saved: {data.get('title')} (from {os.path.basename(file_path)})")
         except Exception as e:
             print(f"Skipping file {file_path}: {e}")
             
     print(f"\nImport complete. Successfully saved {success_count} projects.")
 
 if __name__ == "__main__":
-    # When run directly, initialize DB and process the output folder
-    init_db()
     process_output_folder()
