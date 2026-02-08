@@ -7,8 +7,10 @@ Now uses Gemini + GitHub API with minimal requests.
 from agents.claim_extractor import ClaimExtractor
 from agents.github_validator import GitHubValidator
 from scraper import DevpostScraper
+from database import SessionLocal, Hackathon, Project
 import json
 import os
+from sqlalchemy.dialects.postgresql import insert
 
 
 class ValidationPipeline:
@@ -20,6 +22,53 @@ class ValidationPipeline:
             github_token=github_token,
             llm=self.claim_extractor.llm
         )
+    
+    def save_to_supabase(self, org_id: str, hackathon_url: str, devpost_data: dict, result: dict):
+        """
+        Save hackathon and project result to Supabase.
+        """
+        db = SessionLocal()
+        try:
+            # 1. Upsert Hackathon (using devpost_url as unique key)
+            # We strip trailing slash for consistency
+            clean_hackathon_url = hackathon_url.rstrip('/')
+            
+            # Using SQLAlchemy ORM for better compatibility with UUID generators
+            hackathon = db.query(Hackathon).filter(Hackathon.devpost_url == clean_hackathon_url).first()
+            
+            if not hackathon:
+                hackathon = Hackathon(
+                    org_id=org_id,
+                    name=devpost_data.get('hackathon') or "Unnamed Hackathon",
+                    devpost_url=clean_hackathon_url,
+                    start_time=devpost_data.get('start_time'),
+                    end_time=devpost_data.get('end_time')
+                )
+                db.add(hackathon)
+                db.flush() # Get the generated hackathon_id
+            else:
+                # Update existing hackathon if data changed
+                hackathon.name = devpost_data.get('hackathon') or hackathon.name
+                hackathon.start_time = devpost_data.get('start_time') or hackathon.start_time
+                hackathon.end_time = devpost_data.get('end_time') or hackathon.end_time
+            
+            # 2. Save Project
+            project = Project(
+                hackathon_id=hackathon.hackathon_id,
+                source_url=devpost_data.get('url'),
+                title=devpost_data.get('title'),
+                github_repo_link=devpost_data.get('github_repo'),
+                data=result # Store full validation JSON
+            )
+            db.add(project)
+            db.commit()
+            print(f"   ✓ Saved to Supabase: {devpost_data['title']}")
+            
+        except Exception as e:
+            db.rollback()
+            print(f"   ✗ Database error: {str(e)}")
+        finally:
+            db.close()
     
     def validate_project(self, devpost_data: dict) -> dict:
         """
@@ -195,6 +244,7 @@ class ValidationPipeline:
         self,
         devpost_url: str,
         hackathon_url: str,
+        org_id: str = None,
         save_artifacts: bool = False
     ) -> dict:
         """
@@ -249,6 +299,15 @@ class ValidationPipeline:
         # Step 1-2: Validate using existing pipeline
         result = self.validate_project(devpost_data)
         
+        # Step 3: Save to Supabase (if org_id provided)
+        if org_id:
+            self.save_to_supabase(
+                org_id=org_id,
+                hackathon_url=hackathon_url,
+                devpost_data=devpost_data,
+                result=result
+            )
+        
         # Optional: Save artifacts for debugging
         if save_artifacts:
             from pathlib import Path
@@ -291,6 +350,7 @@ class ValidationPipeline:
     def validate_hackathon(
         self,
         hackathon_url: str,
+        org_id: str = None,
         max_projects: int = None,
         delay_seconds: float = 4.0,
         save_artifacts: bool = False
@@ -335,6 +395,7 @@ class ValidationPipeline:
                 result = self.validate_from_url(
                     devpost_url=project_url,
                     hackathon_url=hackathon_url,
+                    org_id=org_id,
                     save_artifacts=save_artifacts
                 )
                 results.append(result)
