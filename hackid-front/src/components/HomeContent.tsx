@@ -16,10 +16,10 @@ interface HomeContentProps {
         email?: string | null;
         picture?: string | null;
     } | null;
-    orgId?: string | null;
+    userEmail?: string | null;
 }
 
-export default function HomeContent({ user, orgId }: HomeContentProps) {
+export default function HomeContent({ user, userEmail }: HomeContentProps) {
     const [isDark, setIsDark] = useState(true);
     const [url, setUrl] = useState('');
     const [isScanning, setIsScanning] = useState(false);
@@ -34,16 +34,18 @@ export default function HomeContent({ user, orgId }: HomeContentProps) {
     const [activeVerdict, setActiveVerdict] = useState<Verdict | 'ALL'>('ALL');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Initial fetch of hackathons (filtered by organization if logged in)
+    // Initial fetch of hackathons (filtered by user email)
     useEffect(() => {
+        console.log('[HomeContent] userEmail prop:', userEmail);
+
         const fetchHackathons = async () => {
-            const data = await getHackathons(orgId ?? undefined);
-            if (data.length > 0) {
-                setHackathons(data);
-            }
+            const data = await getHackathons(userEmail ?? undefined);
+            console.log('[HomeContent] Fetched hackathons:', data.length);
+            // Always update state, even if empty (removes dummy data)
+            setHackathons(data);
         };
         fetchHackathons();
-    }, [orgId]);
+    }, [userEmail]);
 
     const toggleTheme = () => {
         setIsDark(prev => !prev);
@@ -79,15 +81,18 @@ export default function HomeContent({ user, orgId }: HomeContentProps) {
     };
 
     const handleScan = async () => {
-        if (!url) return;
+        if (!url || !userEmail) {
+            alert("You must be logged in to scan hackathons");
+            return;
+        }
         setIsScanning(true);
 
         try {
-            const result = await scanUrl(url, limit);
+            const result = await scanUrl(url, limit, userEmail);
             if (result.success) {
                 // Refresh data based on current view
                 if (view === 'HACKATHONS') {
-                    const data = await getHackathons(orgId ?? undefined);
+                    const data = await getHackathons(userEmail ?? undefined);
                     if (data.length > 0) setHackathons(data);
                 } else if (selectedHackathon) {
                     const data = await getProjectsByHackathon(selectedHackathon.id);

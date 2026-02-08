@@ -44,6 +44,7 @@ class ValidationRequest(BaseModel):
 class BatchValidationRequest(BaseModel):
     hackathon_url: str
     max_projects: Optional[int] = 10
+    owner_email: str  # Email of the user who initiated the scan
 
 @app.get("/")
 async def root():
@@ -74,6 +75,7 @@ async def validate_batch(request: BatchValidationRequest):
         results = pipeline.validate_hackathon(
             hackathon_url=request.hackathon_url,
             max_projects=request.max_projects,
+            owner_email=request.owner_email,
             delay_seconds=2.0 
         )
         return {

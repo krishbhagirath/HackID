@@ -10,10 +10,11 @@ export default async function Home() {
     picture: session.user.picture,
   } : null;
 
-  // Get organization from user's app_metadata (set in Auth0 Dashboard)
-  const orgId = (session?.user as any)?.app_metadata?.organization ||
-    (session?.user as any)?.organization ||
-    null;
+  // Get user's email for filtering their hackathons
+  const userEmail = session?.user?.email ?? null;
 
-  return <HomeContent user={user} orgId={orgId} />;
+  console.log('[Home Page] Auth0 session user:', session?.user);
+  console.log('[Home Page] Extracted userEmail:', userEmail);
+
+  return <HomeContent user={user} userEmail={userEmail} />;
 }

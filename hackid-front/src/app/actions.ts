@@ -4,10 +4,18 @@ import { db } from "~/server/db";
 import { type Hackathon, type ProjectResult, Verdict } from "~/types";
 import { env } from "~/env";
 
-export async function getHackathons(orgId?: string): Promise<Hackathon[]> {
+export async function getHackathons(userEmail?: string): Promise<Hackathon[]> {
     try {
+        console.log('[getHackathons] Filtering by userEmail:', userEmail);
+
+        // If no user email, return empty (user must be logged in to see hackathons)
+        if (!userEmail) {
+            console.log('[getHackathons] No userEmail, returning empty array');
+            return [];
+        }
+
         const hackathons = await db.hackathons.findMany({
-            where: orgId ? { org_id: orgId } : undefined,
+            where: { owner_email: userEmail },
             include: {
                 _count: {
                     select: { projects: true }
@@ -16,6 +24,11 @@ export async function getHackathons(orgId?: string): Promise<Hackathon[]> {
             orderBy: {
                 start_time: 'desc'
             }
+        });
+
+        console.log('[getHackathons] Found', hackathons.length, 'hackathons');
+        hackathons.forEach(h => {
+            console.log('  -', h.name, '| owner_email:', h.owner_email);
         });
 
         return hackathons.map((h: any) => ({
@@ -59,7 +72,7 @@ export async function getProjectsByHackathon(hackathonId: string): Promise<Proje
     }
 }
 
-export async function scanUrl(url: string, limit: number): Promise<{ success: boolean; message: string }> {
+export async function scanUrl(url: string, limit: number, userEmail: string): Promise<{ success: boolean; message: string }> {
     try {
         // This is a server action that performs a POST request to your external API
         // You can modify the request body here as requested
@@ -71,6 +84,7 @@ export async function scanUrl(url: string, limit: number): Promise<{ success: bo
             body: JSON.stringify({
                 hackathon_url: url,
                 max_projects: limit,
+                owner_email: userEmail,
             }),
         });
 

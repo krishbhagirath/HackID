@@ -24,10 +24,10 @@ class ValidationPipeline:
             llm=self.claim_extractor.llm
         )
     
-    def save_to_supabase(self, hackathon_url: str, devpost_data: dict, result: dict):
+    def save_to_supabase(self, hackathon_url: str, devpost_data: dict, result: dict, owner_email: str = ""):
         """
         Save hackathon and project result to Supabase.
-        org_id is kept empty as requested.
+        owner_email associates the hackathon with the user who scanned it.
         """
         db = SessionLocal()
         try:
@@ -47,6 +47,7 @@ class ValidationPipeline:
                     
                 hackathon = Hackathon(
                     org_id="", # Empty as requested
+                    owner_email=owner_email,  # Associate with user
                     name=hackathon_name,
                     devpost_url=clean_hackathon_url,
                     start_time=devpost_data.get('start_time'),
@@ -318,6 +319,7 @@ class ValidationPipeline:
         self,
         devpost_url: str,
         hackathon_url: str,
+        owner_email: str = "",
         save_artifacts: bool = False
     ) -> dict:
         """
@@ -381,7 +383,8 @@ class ValidationPipeline:
         self.save_to_supabase(
             hackathon_url=hackathon_url,
             devpost_data=devpost_data,
-            result=result
+            result=result,
+            owner_email=owner_email
         )
         
         # Optional: Save artifacts for debugging
@@ -426,6 +429,7 @@ class ValidationPipeline:
     def validate_hackathon(
         self,
         hackathon_url: str,
+        owner_email: str = "",
         max_projects: int = None,
         delay_seconds: float = 4.0,
         save_artifacts: bool = False
@@ -484,6 +488,7 @@ class ValidationPipeline:
                 result = self.validate_from_url(
                     devpost_url=project_url,
                     hackathon_url=hackathon_url,
+                    owner_email=owner_email,
                     save_artifacts=save_artifacts
                 )
                 

@@ -24,6 +24,7 @@ class Hackathon(Base):
 
     hackathon_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(String, nullable=False)
+    owner_email = Column(String, nullable=False, default="")  # Email of the user who created this hackathon
     name = Column(String, nullable=False)
     devpost_url = Column(String, nullable=False, unique=True)
     start_time = Column(DateTime(timezone=True))

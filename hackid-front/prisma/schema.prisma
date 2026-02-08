@@ -11,12 +11,15 @@ datasource db {
 model hackathons {
   hackathon_id String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   org_id       String
+  owner_email  String     @default("") // Email of the user who created this hackathon
   name         String
   devpost_url  String     @unique
   start_time   DateTime   @db.Timestamptz(6)
   end_time     DateTime   @db.Timestamptz(6)
   created_at   DateTime   @default(now()) @db.Timestamptz(6)
   projects     projects[]
+  
+  @@index([owner_email])
 }
 
 model projects {
