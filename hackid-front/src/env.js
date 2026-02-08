@@ -8,12 +8,16 @@ export const env = createEnv({
    */
   server: {
     NODE_ENV: z.enum(["development", "test", "production"]),
+<<<<<<< HEAD
     // Auth0 Configuration (v4 uses these exact names)
     AUTH0_SECRET: z.string().min(1),
     APP_BASE_URL: z.string().url(),
     AUTH0_DOMAIN: z.string().min(1),
     AUTH0_CLIENT_ID: z.string().min(1),
     AUTH0_CLIENT_SECRET: z.string().min(1),
+=======
+    DATABASE_URL: z.string().min(1),
+>>>>>>> cbcc8b4cb84f1a918d4e0fd99243fc2af3a179cd
   },
 
   /**
@@ -31,12 +35,17 @@ export const env = createEnv({
    */
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
+<<<<<<< HEAD
     // Auth0
     AUTH0_SECRET: process.env.AUTH0_SECRET,
     APP_BASE_URL: process.env.APP_BASE_URL,
     AUTH0_DOMAIN: process.env.AUTH0_DOMAIN,
     AUTH0_CLIENT_ID: process.env.AUTH0_CLIENT_ID,
     AUTH0_CLIENT_SECRET: process.env.AUTH0_CLIENT_SECRET,
+=======
+    DATABASE_URL: process.env.DATABASE_URL,
+    // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
+>>>>>>> cbcc8b4cb84f1a918d4e0fd99243fc2af3a179cd
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
